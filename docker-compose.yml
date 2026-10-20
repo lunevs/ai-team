@@ -1,0 +1,162 @@
+name: ai-team
+x-op: &op
+  image: openproject/openproject:17.9.2-slim@sha256:7b50be7ff67dd0c7e264b09e15591d5f192bbd5802c0233469ab77eaeabf03ba
+  restart: unless-stopped
+  environment: &op-env
+    DATABASE_URL: postgres://openproject:${OPENPROJECT_DB_PASSWORD:?run init_env}@postgres/openproject?pool=5
+    SECRET_KEY_BASE: ${OPENPROJECT_SECRET_KEY_BASE:?run init_env}
+    OPENPROJECT_HOST__NAME: localhost:8080
+    OPENPROJECT_ADDITIONAL__HOST__NAMES: openproject
+    OPENPROJECT_HTTPS: 'false'
+    OPENPROJECT_HSTS: 'false'
+    OPENPROJECT_RAILS__CACHE__STORE: memcache
+    OPENPROJECT_CACHE__MEMCACHE__SERVER: cache:11211
+    OPENPROJECT_COLLABORATIVE__EDITING__HOCUSPOCUS__URL: ws://localhost:8081
+    OPENPROJECT_COLLABORATIVE__EDITING__HOCUSPOCUS__SECRET: ${COLLABORATIVE_SERVER_SECRET:?run init_env}
+    RAILS_MIN_THREADS: '1'
+    RAILS_MAX_THREADS: '4'
+    OPENPROJECT_WEB__WORKERS: '1'
+    IMAP_ENABLED: 'false'
+  volumes:
+    - opdata:/var/openproject/assets
+  networks: [backend]
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: '3'
+  pids_limit: 256
+  cpus: 2
+  mem_limit: 1536m
+  depends_on:
+    postgres:
+      condition: service_healthy
+    cache:
+      condition: service_started
+services:
+  postgres:
+    logging: *logging
+    image: postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run init_env}
+      OPENPROJECT_DB_PASSWORD: ${OPENPROJECT_DB_PASSWORD:?run init_env}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?run init_env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks: [backend]
+    mem_limit: 512m
+    cpus: 1
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U postgres -d postgres']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  cache:
+    logging: *logging
+    image: memcached:1.6.39-alpine@sha256:c8503d4491edd3110cc07d0465089d3a41cf1daf8645e71149e39a51835e92cd
+    restart: unless-stopped
+    command: [memcached, -m, '64']
+    networks: [backend]
+    mem_limit: 96m
+    cpus: 0.5
+  op-seeder:
+    <<: *op
+    command: ./docker/prod/seeder
+    restart: on-failure:2
+  openproject:
+    <<: *op
+    command: ./docker/prod/web
+    networks: [backend, frontend]
+    ports: ['127.0.0.1:8080:8080']
+    depends_on:
+      op-seeder:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:8080/health_checks/default]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+  op-worker:
+    <<: *op
+    command: ./docker/prod/worker
+    depends_on:
+      op-seeder:
+        condition: service_completed_successfully
+  op-cron:
+    <<: *op
+    command: ./docker/prod/cron
+    mem_limit: 256m
+    depends_on:
+      op-seeder:
+        condition: service_completed_successfully
+  hocuspocus:
+    logging: *logging
+    image: openproject/hocuspocus:17.9.2@sha256:1039808f584d946df7d465bdb4cf4a59feb4793bf9a3fa721b782650f0343c8c
+    restart: unless-stopped
+    environment:
+      SECRET: ${COLLABORATIVE_SERVER_SECRET:?run init_env}
+      OPENPROJECT_URL: http://openproject:8080
+      OPENPROJECT_HTTPS: 'false'
+    ports: ['127.0.0.1:8081:1234']
+    networks: [backend, frontend]
+    mem_limit: 256m
+    cpus: 0.5
+  bookstack-db:
+    logging: *logging
+    image: mariadb:11.4.8@sha256:bc474f00629f0123c10f9e1bca193a45d18af15a274cf0656acda64f1086c3b6
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?run init_env}
+      MARIADB_DATABASE: bookstack
+      MARIADB_USER: bookstack
+      MARIADB_PASSWORD: ${BOOKSTACK_DB_PASSWORD:?run init_env}
+    volumes: [bookstack_db:/var/lib/mysql]
+    networks: [backend]
+    mem_limit: 384m
+    cpus: 1
+    healthcheck:
+      test: [CMD, healthcheck.sh, --connect, --innodb_initialized]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  bookstack:
+    logging: *logging
+    image: ghcr.io/linuxserver/bookstack:26.09.1@sha256:1fdbaf1908cbe0e92960b45f39404745e3e37392732c131940a163455632e9cd
+    restart: unless-stopped
+    environment:
+      PUID: '1000'
+      PGID: '1000'
+      TZ: Europe/Belgrade
+      APP_URL: http://localhost:8082
+      APP_KEY: ${BOOKSTACK_APP_KEY:?run init_env}
+      DB_HOST: bookstack-db
+      DB_PORT: '3306'
+      DB_DATABASE: bookstack
+      DB_USERNAME: bookstack
+      DB_PASSWORD: ${BOOKSTACK_DB_PASSWORD:?run init_env}
+    volumes: [bookstack_data:/config]
+    ports: ['127.0.0.1:8082:80']
+    networks: [backend, frontend]
+    mem_limit: 512m
+    cpus: 1
+    depends_on:
+      bookstack-db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost/login]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+networks:
+  frontend:
+  backend:
+    internal: true
+volumes:
+  pgdata:
+  opdata:
+  bookstack_db:
+  bookstack_data:

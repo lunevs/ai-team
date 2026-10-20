@@ -1,0 +1,35 @@
+name: Infrastructure checks
+on:
+  pull_request:
+  push:
+    branches: [main, 'release/**']
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile helper scripts
+        run: python -m compileall -q scripts
+      - name: Validate Compose without printing secrets
+        run: |
+          python scripts/init_env.py
+          docker compose config --quiet
+          docker compose config --services
+          git check-ignore .env
+      - name: Verify clean PostgreSQL initialization
+        run: |
+          docker compose up -d --wait postgres
+          python - <<'PY'
+          import subprocess
+          query = "SELECT count(*) FROM pg_database WHERE datname IN ('openproject', 'ai_team')"
+          result = subprocess.check_output(['docker', 'compose', 'exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', 'postgres', '-Atc', query], text=True).strip()
+          assert result == '2', f'Expected two application databases, got {result}'
+          PY
+      - name: Stop test containers
+        if: always()
+        run: docker compose down -v
