@@ -88,7 +88,9 @@ def usage(story_id):
     with connection() as conn:
         return conn.execute('''SELECT count(*)::int AS calls,coalesce(sum(coalesce(actual_tokens,reserved_tokens)),0)::int AS tokens,
           coalesce(sum(coalesce(actual_cost,reserved_cost)),0)::float AS estimated_cost_usd,
-          count(*) FILTER(WHERE actual_cost IS NULL)::int AS estimated_calls
+          count(*) FILTER(WHERE actual_cost IS NULL)::int AS estimated_calls,
+          coalesce(array_agg(DISTINCT backend),'{}'::text[]) AS backends,
+          coalesce(array_agg(DISTINCT model),'{}'::text[]) AS models
           FROM llm_calls WHERE story_id=%s''',(story_id,)).fetchone()
 
 def reserve_call(story_id,role,tokens,cost):

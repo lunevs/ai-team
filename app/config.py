@@ -26,7 +26,7 @@ class Settings:
     max_calls: int = 8
     max_tokens: int = 60000
     max_cost: float = 1.0
-    completion_tokens: int = 2048
+    completion_tokens: int = 4096
     input_price: float = field(default_factory=lambda: float(os.getenv('LLM_INPUT_USD_PER_MILLION', '1')))
     output_price: float = field(default_factory=lambda: float(os.getenv('LLM_OUTPUT_USD_PER_MILLION', '4')))
 
