@@ -6,7 +6,13 @@
     "calls": 2,
     "tokens": 7832,
     "estimated_cost_usd": 0.00338498,
-    "estimated_calls": 0
+    "estimated_calls": 0,
+    "backends": [
+      "openrouter"
+    ],
+    "models": [
+      "deepseek/deepseek-v4.1-flash"
+    ]
   },
   "revision": 1,
   "work_package_id": 70,

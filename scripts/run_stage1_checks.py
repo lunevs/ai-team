@@ -1,5 +1,6 @@
 """Host-side real API e2e with Docker restart; runtime containers never get Docker socket."""
 import concurrent.futures
+import base64
 import json
 from pathlib import Path
 import subprocess
@@ -78,6 +79,25 @@ call('/stories/'+clarify['story_id']+'/resume','POST',{'answers':'Использ
 new_plan=wait(clarify['story_id'],{'PLAN_REVIEW'})
 assert new_plan['revision']==2
 report['checks'].append('questions and resume create revision 2')
+
+# Tracker is authoritative even while LangGraph waits at the approval interrupt.
+def tracker_status(story,status):
+    headers={'Authorization':'Basic '+base64.b64encode(('apikey:'+values['OPENPROJECT_PM_TOKEN']).encode()).decode(),'Content-Type':'application/json'}
+    url='http://localhost:8080/api/v3/work_packages/'+str(story['openproject_work_package_id'])
+    with urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=30) as response:
+        item=json.load(response)
+    status_id=json.loads(values['OPENPROJECT_STATUS_IDS'])[status]
+    body={'lockVersion':item['lockVersion'],'_links':{'status':{'href':f'/api/v3/statuses/{status_id}'}}}
+    with urllib.request.urlopen(urllib.request.Request(url,data=json.dumps(body).encode(),headers=headers,method='PATCH'),timeout=30) as response:
+        json.load(response)
+tracker_status(new_plan,'BLOCKED')
+remote_blocked=wait(clarify['story_id'],{'BLOCKED'},timeout=90)
+assert remote_blocked['usage']['calls']==new_plan['usage']['calls']
+tracker_status(new_plan,'CANCELLED')
+remote_cancelled=wait(clarify['story_id'],{'CANCELLED'},timeout=90)
+assert remote_cancelled['usage']['calls']==new_plan['usage']['calls']
+report['checks'].extend(['manual tracker BLOCKED reconciled while waiting','manual tracker CANCELLED reconciled without new LLM calls'])
+
 budget,_,_=create('Синтетический портфель: проверить ограничение числа LLM-вызовов',max_calls=1)
 budget_blocked=wait(budget['story_id'],{'BLOCKED'})
 assert budget_blocked['error_type']=='BudgetExceeded' and budget_blocked['usage']['calls']==1

@@ -43,5 +43,5 @@ jobs:
         if: steps.source.outputs.available == 'false'
         run: echo 'This task depends on PR for task 42. Combined release checks run after dependency integration.'
       - name: Stop isolated services
-        if: always()
+        if: ${{ always() && steps.source.outputs.available == 'true' }}
         run: docker compose down -v
