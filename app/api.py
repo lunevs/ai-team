@@ -125,3 +125,37 @@ def resume(id:uuid.UUID,data:Resume,user=Depends(current_user)):
         db.event(conn,row,'story.resumed',{'actor':user,'new_revision':bool(data.answers.strip())})
         db.enqueue(conn,id)
     return public_story(require_story(id))
+
+@app.get('/stories/{id}/team')
+def team(id:uuid.UUID,user=Depends(current_user)):
+    from app.team import project_team
+    from app.integrations import tracker
+    from app.config import settings
+    story=require_story(id)
+    with db.connection() as conn:
+        results=conn.execute('SELECT role,revision FROM agent_results WHERE story_id=%s ORDER BY revision DESC',(id,)).fetchall()
+        calls=conn.execute('SELECT role,revision,state FROM llm_calls WHERE story_id=%s',(id,)).fetchall()
+        links=conn.execute('SELECT key,external_id,url FROM external_ids WHERE story_id=%s',(id,)).fetchall()
+        job=conn.execute("SELECT 1 FROM jobs WHERE story_id=%s AND state='running' AND lease_until>now()",(id,)).fetchone()
+    # Event payload historically omitted revision; event_key identifies it reliably.
+    with db.connection() as conn:
+        completed=conn.execute("SELECT event_key,created_at FROM events WHERE story_id=%s AND type='agent.completed'",(id,)).fetchall()
+    completions={}
+    for event in completed:
+        parts=(event['event_key'] or '').split(':')
+        if len(parts)==4:
+            completions[(parts[2],int(parts[1]))]=event['created_at']
+    packages={}
+    available=True
+    try:
+        statuses={item['_links']['self']['href']:item for item in tracker.collection('/api/v3/statuses',role='pm')}
+        for item in tracker.collection(f'/api/v3/projects/{settings.project_id}/work_packages?pageSize=100',role='pm'):
+            href=item.get('_links',{}).get('status',{}).get('href')
+            status=dict(statuses.get(href,{}))
+            status['isInProgress']=href==f"/api/v3/statuses/{settings.status_ids.get('IN_PROGRESS')}"
+            item.setdefault('_embedded',{})['status']=status
+            packages[item['id']]=item
+    except Exception as exc:
+        available=False
+        log('team.tracker_unavailable',error_type=type(exc).__name__)
+    return project_team(story,results,completions,calls,links,packages,available,bool(job))
