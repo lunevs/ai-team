@@ -57,6 +57,10 @@ if not id:
     st.stop()
 story=request('/stories/'+id)
 if story is None:st.stop()
+if 'mock' in story['usage'].get('backends',[]):
+    st.warning('Тестовая история: использовался mock LLM. Это не результат реального запроса к модели.')
+elif story['usage'].get('backends'):
+    st.caption('LLM backend: '+', '.join(story['usage']['backends']))
 a,b,c=st.columns(3)
 a.metric('Статус',story['status'])
 b.metric('LLM-вызовы',story['usage']['calls'])
