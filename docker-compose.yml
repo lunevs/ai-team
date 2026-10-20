@@ -33,6 +33,30 @@ x-op: &op
       condition: service_healthy
     cache:
       condition: service_started
+x-app: &app
+  build: .
+  image: ai-team-app:0.2.0
+  user: '10001:10001'
+  restart: unless-stopped
+  networks: [backend]
+  logging: *logging
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  pids_limit: 128
+  cpus: 1
+  mem_limit: 512m
+x-runtime-env: &runtime-env
+  DATABASE_URL: postgresql://ai_team_runtime:${APP_RUNTIME_DB_PASSWORD:-not-configured}@postgres/ai_team
+  OPENPROJECT_URL: http://openproject:8080
+  OPENPROJECT_PUBLIC_URL: http://localhost:8080
+  OPENPROJECT_PROJECT_ID: '3'
+  OPENPROJECT_PM_TOKEN: ${OPENPROJECT_PM_TOKEN:-}
+  OPENPROJECT_STATUS_IDS: ${OPENPROJECT_STATUS_IDS:-}
+  AGENT_USER_IDS: ${AGENT_USER_IDS:-}
+  LANGCHAIN_TRACING_V2: 'false'
+  LANGSMITH_TRACING: 'false'
 services:
   postgres:
     logging: *logging
@@ -151,6 +175,78 @@ services:
       timeout: 5s
       retries: 20
       start_period: 60s
+  migrate:
+    <<: *app
+    command: [python, -m, app.migrate]
+    restart: 'no'
+    environment:
+      DATABASE_URL: postgresql://ai_team:${APP_DB_PASSWORD:?run init_env}@postgres/ai_team
+    depends_on:
+      postgres:
+        condition: service_healthy
+  api:
+    <<: *app
+    environment:
+      <<: *runtime-env
+      APP_API_TOKEN: ${APP_API_TOKEN:-}
+    networks: [backend, frontend]
+    ports: ['127.0.0.1:8000:8000']
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready',timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 15
+      start_period: 30s
+  worker:
+    <<: *app
+    command: [python, -m, app.worker]
+    environment:
+      <<: *runtime-env
+      OPENPROJECT_SA_TOKEN: ${OPENPROJECT_SA_TOKEN:-}
+      BOOKSTACK_URL: http://bookstack
+      BOOKSTACK_PUBLIC_URL: http://localhost:8082
+      BOOKSTACK_BOOK_ID: '1'
+      BOOKSTACK_RUNTIME_TOKEN_ID: ${BOOKSTACK_RUNTIME_TOKEN_ID:-}
+      BOOKSTACK_RUNTIME_TOKEN_SECRET: ${BOOKSTACK_RUNTIME_TOKEN_SECRET:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      LLM_BACKEND: ${LLM_BACKEND:-openrouter}
+      LLM_STRUCTURED_MODE: ${LLM_STRUCTURED_MODE:-json_object}
+      LLM_INPUT_USD_PER_MILLION: ${LLM_INPUT_USD_PER_MILLION:-1}
+      LLM_OUTPUT_USD_PER_MILLION: ${LLM_OUTPUT_USD_PER_MILLION:-4}
+    networks: [backend, frontend]
+    stop_grace_period: 15s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "from app.db import connection; c=connection(); db=c.__enter__(); assert db.execute(\"SELECT 1 FROM worker_heartbeats WHERE last_seen>now()-interval '30 seconds' LIMIT 1\").fetchone()"]
+      interval: 15s
+      timeout: 6s
+      retries: 5
+      start_period: 20s
+  ui:
+    <<: *app
+    profiles: [ui]
+    command: [streamlit, run, ui/main.py, --server.address=0.0.0.0, --server.port=8501, --browser.gatherUsageStats=false]
+    environment:
+      API_URL: http://api:8000
+      APP_API_TOKEN: ${APP_API_TOKEN:-}
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: 'false'
+      HOME: /tmp
+    networks: [frontend]
+    ports: ['127.0.0.1:8501:8501']
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health',timeout=5)"]
+      interval: 15s
+      timeout: 6s
+      retries: 10
 networks:
   frontend:
   backend:
