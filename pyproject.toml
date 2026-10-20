@@ -1,0 +1,8 @@
+[project]
+name = "bank-ai-delivery-team"
+version = "0.2.0"
+requires-python = ">=3.12"
+description = "Локальная команда банковской аналитики"
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: requires application PostgreSQL", "e2e: requires real running service integrations"]
