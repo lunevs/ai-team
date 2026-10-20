@@ -1,0 +1,25 @@
+{
+  "backend": "mock",
+  "checks": [
+    "unauthorized API denied",
+    "concurrent POST idempotency",
+    "conflicting key denied",
+    "PM + SA plan and task links",
+    "stale approval denied",
+    "checkpoint survives worker restart",
+    "approval persisted once",
+    "no SQL executed before or after stage 1 approval",
+    "questions and resume create revision 2",
+    "manual tracker BLOCKED reconciled while waiting",
+    "manual tracker CANCELLED reconciled without new LLM calls",
+    "budget blocks further LLM calls",
+    "cancellation prevents approval"
+  ],
+  "story_ids": [
+    "17a89f01-21f0-4c01-8981-e048918daa0a",
+    "f7ba5df0-c653-4821-bdaf-ee21c866546c",
+    "3fa5120a-b357-4448-84eb-ab2043db7ade",
+    "1104eb38-ef5e-4842-9b3b-4fc082a0dc82"
+  ],
+  "status": "passed"
+}

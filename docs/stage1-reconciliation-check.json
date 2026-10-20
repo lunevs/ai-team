@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "story_id": "b8f47406-cb94-4db7-bc02-e6ebd720afc6",
+  "checks": [
+    "manual BLOCKED reconciled while awaiting approval",
+    "manual CANCELLED reconciled from BLOCKED",
+    "no additional LLM calls",
+    "real demonstration remains PLAN_REVIEW"
+  ]
+}

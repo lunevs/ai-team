@@ -1,0 +1,22 @@
+{
+  "backend": "openrouter",
+  "story_id": "0cd4cc1a-93e0-47b9-8bd9-c28c583c01d8",
+  "status": "PLAN_REVIEW",
+  "usage": {
+    "calls": 2,
+    "tokens": 7832,
+    "estimated_cost_usd": 0.00338498,
+    "estimated_calls": 0,
+    "backends": [
+      "openrouter"
+    ],
+    "models": [
+      "deepseek/deepseek-v4.1-flash"
+    ]
+  },
+  "revision": 1,
+  "work_package_id": 70,
+  "links_count": 19,
+  "questions_count": 0,
+  "approved": false
+}
