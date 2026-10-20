@@ -5,8 +5,11 @@
 
 ## Текущий объём
 
-Этап 0: реальная инфраструктура OpenProject + PostgreSQL + BookStack/MariaDB,
-проверки API, OpenRouter и GitHub. В OpenProject: проект `ai-team`, эпик №38, задачи №39 и №40. FastAPI, LangGraph, Streamlit и агенты пока не реализованы.
+Этап 0 принят: OpenProject + PostgreSQL + BookStack/MariaDB, проверки API/OpenRouter/GitHub.
+Этап 1: FastAPI, отдельный worker с LangGraph/PostgreSQL checkpoints, PM/SA и Streamlit.
+Семь unit/integration тестов и 11 e2e проверок с mock LLM прошли; реальное планирование
+OpenRouter также проверено (2 вызова, 7 832 токена, около $0,003385). Эпик реализации №41, задачи №42–45.
+SQL-исполнение и остальные исполнительные роли относятся к следующим этапам.
 
 ## Запуск
 
@@ -174,3 +177,8 @@ Pydantic без запроса JSON capability; неподдерживаемая
 останавливаются. Marker IDs и внешний реестр позволяют найти такой результат после сбоя.
 Полные story/промпты не выводятся в логи; в БД и KnowledgeBase сохраняется нужное содержание
 синтетической задачи. Полный профиль OTel/Grafana относится к этапу 4.
+
+Демонстрационная история с реальной моделью: OpenProject #70, статус PLAN_REVIEW.
+План оставлен для проверки заказчиком; полные результаты — docs/stage1-check.json
+и docs/stage1-openrouter-check.json. PR #4–7 пока не слиты; локально используется
+validation/epic-41. После слияния и приёмки этапа 1 можно переходить к аналитическим данным.
