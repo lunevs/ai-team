@@ -1,0 +1,47 @@
+name: Application checks
+on:
+  pull_request:
+  push:
+    branches: [main, 'release/**']
+permissions:
+  contents: read
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check dependency PR availability
+        id: source
+        run: |
+          if test -f requirements.lock; then echo 'available=true' >> "$GITHUB_OUTPUT"; else echo 'available=false' >> "$GITHUB_OUTPUT"; fi
+      - name: Install locked dependencies
+        if: steps.source.outputs.available == 'true'
+        run: pip install -r requirements.lock
+      - name: Unit contracts
+        if: steps.source.outputs.available == 'true'
+        run: python -m pytest -q tests/unit
+      - name: Prepare isolated PostgreSQL and runtime role
+        if: steps.source.outputs.available == 'true'
+        run: |
+          python scripts/init_env.py
+          docker compose up -d --wait postgres
+          docker compose exec -T postgres psql -U postgres -d ai_team -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE ai_team_runtime LOGIN PASSWORD 'ephemeral-ci-only';
+          GRANT CONNECT ON DATABASE ai_team TO ai_team_runtime;
+          GRANT USAGE ON SCHEMA public TO ai_team_runtime;
+          SQL
+          echo 'APP_RUNTIME_DB_PASSWORD=ephemeral-ci-only' >> .env
+          docker compose build migrate
+          docker compose run --rm --no-deps migrate
+      - name: PostgreSQL integration
+        if: steps.source.outputs.available == 'true'
+        run: docker compose run --rm --no-deps worker python -m pytest -q tests/integration
+      - name: Dependencies must be integrated before release
+        if: steps.source.outputs.available == 'false'
+        run: echo 'This task depends on PR for task 42. Combined release checks run after dependency integration.'
+      - name: Stop isolated services
+        if: always()
+        run: docker compose down -v

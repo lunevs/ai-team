@@ -103,3 +103,74 @@ OpenProject Community: GPLv3 (проверен LICENSE установленно�
 Docker-образ BookStack — community distribution LinuxServer, указанный в документации BookStack.
 Платные функции OpenProject не используются. Реальные ограничения интеграций и измерения
 фиксируются в ТЗ и `docs/integration-check.json`. Готовность к production не заявляется.
+
+## Этап 1: API, worker и Streamlit
+
+Работа ведётся в эпике №41, задачах №42–45. После принятой инфраструктуры подготовлены
+API, очередь, LangGraph checkpoints, PM/SA, публикация плана и отдельный Streamlit UI.
+
+Для runtime-доступов оператор запускает `python3 scripts/bootstrap_runtime.py` после
+согласования прав: неадминистративная роль PostgreSQL; семь участников OpenProject с
+чтением/созданием/изменением задач, назначаемостью, управлением иерархией и зависимостями;
+BookStack — чтение книг и создание/изменение страниц с API, без удаления и управления аккаунтами.
+OpenProject-роль действует только в проекте `ai-team`. BookStack-роль действует на локальный
+инстанс; её токен — 30 дней. Значения остаются в `.env`.
+
+```sh
+python3 scripts/bootstrap_runtime.py
+docker compose build api
+docker compose --profile ui up -d api worker ui
+docker compose ps --all
+```
+
+- UI: http://localhost:8501
+- API/OpenAPI: http://localhost:8000/docs
+- API требует `Authorization: Bearer <APP_API_TOKEN>` (кроме `/health` и `/ready`).
+- `POST /stories` требует `Idempotency-Key`, текст и `synthetic_only: true`.
+- Одобрение содержит `revision` и `plan_digest`, полученные из истории. Устаревший план
+  отклоняется с 409; повторное одобрение того же плана безопасно.
+- При недоступном трекере создание возвращает 202: история уже сохранена, внешний ID
+  появится после восстановления интеграции. Повторять с тем же ключом.
+- `POST /stories/{id}/resume` принимает `answers`; уточнение создаёт новую ревизию и
+  требует нового одобрения. Отмена сохраняется в БД и синхронизируется с трекером.
+- После одобрения статус `IN_PROGRESS` означает конец вертикального среза этапа 1.
+  Аналитики исполнения, SQL, витрины, QA расчётов и отчёты следующих этапов ещё не запускаются.
+
+API не получает OpenRouter и BookStack ключи; UI получает только API-токен. Worker использует
+отдельные PM/SA токены и документационный токен. Миграции идут отдельным процессом под
+владельцем базы; API/worker используют роль без DDL. Контейнеры приложения non-root,
+read-only rootfs, без capabilities и без Docker socket.
+
+Для детерминированной проверки используется отдельный запуск worker с `LLM_BACKEND=mock`:
+
+```sh
+LLM_BACKEND=mock docker compose up -d worker
+python3 scripts/run_stage1_checks.py
+# Вернуть реальную модель из .env:
+docker compose up -d worker
+```
+
+Скрипт создаёт только синтетические тестовые истории, проверяет API/трекер/документацию,
+одобрение, вопросы, бюджет, отмену и перезапускает worker. Требуются реальные локальные
+сервисы; mock относится только к LLM. Его нельзя выдавать за проверку реального OpenRouter.
+
+```sh
+# Unit без сети и секретов:
+docker run --rm --network none ai-team-app:0.2.0 python -m pytest -q -p no:cacheprovider tests/unit
+# Integration проверяет реальный PostgreSQL. На время теста остановить worker,
+# чтобы он не забирал технические задания тестов из той же локальной очереди:
+docker compose stop worker
+docker compose run --rm --no-deps worker python -m pytest -q -p no:cacheprovider tests/integration
+docker compose start worker
+```
+
+LLM reservations сохраняются до запроса; при таймауте резерв не освобождается автоматически.
+Цена оценочная по `LLM_INPUT_USD_PER_MILLION`/`LLM_OUTPUT_USD_PER_MILLION`; сопоставьте их с
+моделью. `LLM_STRUCTURED_MODE=json_object` включает JSON mode, `text` оставляет проверку
+Pydantic без запроса JSON capability; неподдерживаемая настройка даёт явную ошибку.
+Действия инструментов выбирает код, модель не получает произвольный shell или HTTP.
+
+При отмене уже отправленный запрос внешнему сервису может завершиться; следующие действия
+останавливаются. Marker IDs и внешний реестр позволяют найти такой результат после сбоя.
+Полные story/промпты не выводятся в логи; в БД и KnowledgeBase сохраняется нужное содержание
+синтетической задачи. Полный профиль OTel/Grafana относится к этапу 4.
