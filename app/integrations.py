@@ -25,10 +25,18 @@ class OpenProject:
         for attempt in range(3):
             try:
                 with httpx.Client(timeout=20) as client:
-                    r=client.request(method,settings.op_url+path,auth=('apikey',token),json=data)
+                    r=client.request(method,settings.op_url+path,auth=('apikey',token),json=data,headers={'Accept':'application/json'})
             except httpx.TransportError:
                 # POST outcome may be ambiguous: caller must reconcile marker before retry.
                 raise RetryableIntegrationError() from None
+            if r.status_code in [301,302,303,307,308]:
+                location=r.headers.get('location','')
+                if not location.startswith('/api/v3/') or '://' in location:
+                    raise IntegrationError('Redirect outside allowed API')
+                if method!='GET' and r.status_code not in [307,308]:
+                    raise IntegrationError('Ambiguous mutation redirect')
+                path=location
+                continue
             if r.status_code in [429,500,502,503,504]:
                 if method=='POST' or attempt==2: raise RetryableIntegrationError()
                 time.sleep(0.3*2**attempt)

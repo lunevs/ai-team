@@ -27,8 +27,8 @@ def build_graph(saver):
         with db.connection() as conn:
             row=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(id,)).fetchone()
             if row['status']=='CANCELLED': raise db.Cancelled()
-            conn.execute('UPDATE stories SET pm=%s,questions=%s WHERE id=%s',(Jsonb(result.model_dump()),Jsonb(result.questions),id))
-        return {'pm':result.model_dump()}
+            conn.execute('UPDATE stories SET pm=%s,questions=%s WHERE id=%s',(Jsonb(result.model_dump(mode='json')),Jsonb(result.questions),id))
+        return {'pm':result.model_dump(mode='json')}
 
     def blocked_node(state):
         sync_status(state['story_id'],'BLOCKED')
@@ -38,7 +38,7 @@ def build_graph(saver):
         story=db.active(state['story_id'])
         tracker.honor_remote_stop(story['id'])
         result=generate(story['id'],'system_analyst',SAResult,{'story':story['text'],'answers':story['answers'],'product':state['pm'],'instruction':'Подготовь архитектуру и эпики с задачами, критериями, зависимостями и исполнителями. Не исполняй код. Ключи задач уникальны, зависимости ацикличны. Достаточно 1–2 эпиков и 4–7 задач.'})
-        return {'plan':result.model_dump()}
+        return {'plan':result.model_dump(mode='json')}
 
     def publish_node(state):
         id=state['story_id']

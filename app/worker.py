@@ -5,6 +5,7 @@ import time
 import uuid
 from opentelemetry import trace
 from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from app import db
 from app.config import settings
 from app.integrations import RetryableIntegrationError,RemoteBlocked,sync_status,tracker
@@ -48,7 +49,9 @@ def execute(job):
             return
         current[0]=id
         try:
-            with PostgresSaver.from_conn_string(settings.database_url) as saver:
+            with db.connection() as checkpoint_conn:
+                checkpoint_conn.autocommit=True
+                saver=PostgresSaver(checkpoint_conn,serde=JsonPlusSerializer(allowed_msgpack_modules=[('app.schemas','Role')]))
                 trace_id=int(db.get_story(id)['trace_id'],16)
                 parent=trace.NonRecordingSpan(trace.SpanContext(trace_id,uuid.uuid4().int & ((1<<64)-1),is_remote=True,trace_flags=trace.TraceFlags(1)))
                 with tracer.start_as_current_span('story.run',context=trace.set_span_in_context(parent),attributes={'story_id':str(id)}):
@@ -101,7 +104,15 @@ def reconcile_status():
     with db.story_lock(id,blocking=False) as acquired:
         if not acquired: return
         try:
-            tracker.set_status(id,db.get_story(id)['status'])
+            status=db.get_story(id)['status']
+            if status!='CANCELLED':
+                try:
+                    tracker.honor_remote_stop(id)
+                except (db.Cancelled,RemoteBlocked):
+                    with db.connection() as conn:
+                        conn.execute('DELETE FROM status_outbox WHERE story_id=%s',(id,))
+                    return
+            tracker.set_status(id,status)
             with db.connection() as conn:
                 conn.execute('DELETE FROM status_outbox WHERE story_id=%s',(id,))
         except Exception:
@@ -109,10 +120,32 @@ def reconcile_status():
                 conn.execute("UPDATE status_outbox SET attempts=attempts+1,next_attempt=now()+interval '30 seconds' WHERE story_id=%s",(id,))
 
 
+def watch_remote_stops():
+    # Waiting interrupts have no queued work: keep authoritative tracker stops observable.
+    while not stopping.is_set():
+        try:
+            with db.connection() as conn:
+                rows=conn.execute("""SELECT s.id FROM stories s JOIN jobs j ON j.story_id=s.id
+                  WHERE s.status NOT IN ('NEW','CANCELLED','DONE')
+                  AND j.state IN ('waiting','done','failed') ORDER BY s.updated_at LIMIT 100""").fetchall()
+            for row in rows:
+                if stopping.is_set(): break
+                with db.story_lock(row['id'],blocking=False) as acquired:
+                    if not acquired: continue
+                    try:
+                        tracker.honor_remote_stop(row['id'])
+                    except (db.Cancelled,RemoteBlocked):
+                        log('tracker.stop.applied',story_id=str(row['id']))
+        except Exception as exc:
+            log('tracker.watch.failed',error_type=type(exc).__name__)
+        stopping.wait(10)
+
+
 def main():
     signal.signal(signal.SIGTERM,lambda *_:stopping.set())
     signal.signal(signal.SIGINT,lambda *_:stopping.set())
     threading.Thread(target=heartbeat,daemon=True).start()
+    threading.Thread(target=watch_remote_stops,daemon=True).start()
     log('worker.started',worker_id=owner)
     while not stopping.is_set():
         try:
