@@ -10,14 +10,16 @@
     "approval persisted once",
     "no SQL executed before or after stage 1 approval",
     "questions and resume create revision 2",
+    "manual tracker BLOCKED reconciled while waiting",
+    "manual tracker CANCELLED reconciled without new LLM calls",
     "budget blocks further LLM calls",
     "cancellation prevents approval"
   ],
   "story_ids": [
-    "5b3bfd66-4817-4f35-8d74-d4170f3b48a7",
-    "b8f47406-cb94-4db7-bc02-e6ebd720afc6",
-    "78f1de7a-58af-4215-bf75-fe73345e467b",
-    "74885beb-677e-4c71-983a-7de9a94c4313"
+    "17a89f01-21f0-4c01-8981-e048918daa0a",
+    "f7ba5df0-c653-4821-bdaf-ee21c866546c",
+    "3fa5120a-b357-4448-84eb-ab2043db7ade",
+    "1104eb38-ef5e-4842-9b3b-4fc082a0dc82"
   ],
   "status": "passed"
 }

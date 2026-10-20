@@ -7,7 +7,7 @@
 
 Этап 0 принят: OpenProject + PostgreSQL + BookStack/MariaDB, проверки API/OpenRouter/GitHub.
 Этап 1: FastAPI, отдельный worker с LangGraph/PostgreSQL checkpoints, PM/SA и Streamlit.
-Семь unit/integration тестов и 11 e2e проверок с mock LLM прошли; реальное планирование
+Семь unit/integration тестов и 13 e2e проверок с mock LLM прошли; реальное планирование
 OpenRouter также проверено (2 вызова, 7 832 токена, около $0,003385). Эпик реализации №41, задачи №42–45.
 SQL-исполнение и остальные исполнительные роли относятся к следующим этапам.
 
@@ -182,3 +182,6 @@ Pydantic без запроса JSON capability; неподдерживаемая
 План оставлен для проверки заказчиком; полные результаты — docs/stage1-check.json
 и docs/stage1-openrouter-check.json. PR #4–7 пока не слиты; локально используется
 validation/epic-41. После слияния и приёмки этапа 1 можно переходить к аналитическим данным.
+
+Истории с mock backend помечаются предупреждением в UI; реальный backend остаётся openrouter.
+Ожидающие workflow отслеживают ручные BLOCKED/CANCELLED в OpenProject в фоне.
