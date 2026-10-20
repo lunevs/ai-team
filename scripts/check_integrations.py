@@ -79,7 +79,7 @@ statuses = op('/api/v3/statuses')['_embedded']['elements']
 latest = op(f"/api/v3/work_packages/{integrations['id']}")
 op(f"/api/v3/work_packages/{integrations['id']}", 'PATCH', {'lockVersion': latest['lockVersion'], 'description': latest['description']})
 progress = next((s for s in statuses if s['name'].lower() == 'in progress'), None)
-if progress and not latest['_links']['status']['href'].endswith('/'+str(progress['id'])):
+if progress and latest['_links']['status'].get('title', '').lower() == 'new':
     latest = op(f"/api/v3/work_packages/{integrations['id']}")
     op(f"/api/v3/work_packages/{integrations['id']}", 'PATCH', {'lockVersion': latest['lockVersion'], '_links': {'status': {'href': f"/api/v3/statuses/{progress['id']}"}}})
 versions = op(project['_links']['versions']['href'])['_embedded']['elements']
