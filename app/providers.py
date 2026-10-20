@@ -95,7 +95,7 @@ def generate(story_id,role,schema,context):
             conn.execute("UPDATE llm_calls SET state='completed',actual_tokens=%s,actual_cost=%s,latency_ms=%s WHERE id=%s",(actual_tokens,actual_cost,int((time.monotonic()-started)*1000),call_id))
             row=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(story_id,)).fetchone()
             if row['status']=='CANCELLED': raise db.Cancelled()
-            conn.execute('INSERT INTO agent_results VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING',(story_id,story['revision'],role,Jsonb(parsed.model_dump())))
+            conn.execute('INSERT INTO agent_results VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING',(story_id,story['revision'],role,Jsonb(parsed.model_dump(mode='json'))))
             db.event(conn,row,'agent.completed',{'role':role,'backend':settings.backend},f"{story_id}:{story['revision']}:{role}:completed")
         return parsed
     except Exception as exc:
