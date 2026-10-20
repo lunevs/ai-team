@@ -5,6 +5,7 @@ import time
 import uuid
 from opentelemetry import trace
 from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from app import db
 from app.config import settings
 from app.integrations import RetryableIntegrationError,RemoteBlocked,sync_status,tracker
@@ -48,7 +49,9 @@ def execute(job):
             return
         current[0]=id
         try:
-            with PostgresSaver.from_conn_string(settings.database_url) as saver:
+            with db.connection() as checkpoint_conn:
+                checkpoint_conn.autocommit=True
+                saver=PostgresSaver(checkpoint_conn,serde=JsonPlusSerializer(allowed_msgpack_modules=[('app.schemas','Role')]))
                 trace_id=int(db.get_story(id)['trace_id'],16)
                 parent=trace.NonRecordingSpan(trace.SpanContext(trace_id,uuid.uuid4().int & ((1<<64)-1),is_remote=True,trace_flags=trace.TraceFlags(1)))
                 with tracer.start_as_current_span('story.run',context=trace.set_span_in_context(parent),attributes={'story_id':str(id)}):
