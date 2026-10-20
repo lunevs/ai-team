@@ -1,0 +1,57 @@
+{
+  "status": "passed",
+  "project_id": 3,
+  "epic_id": 38,
+  "epic_type": "Epic",
+  "release_version_id": 5,
+  "task_ids": [
+    39,
+    40
+  ],
+  "book_id": 1,
+  "page_id": 2,
+  "documentation_url": "http://localhost:8082/books/bank-ai-delivery-team/page/tz-i-plan-realizacii",
+  "wiki_api_methods": {
+    "/api/v3/wiki_pages/{id}": [
+      "get"
+    ],
+    "/api/v3/wiki_pages/{id}/attachments": [
+      "get",
+      "post"
+    ],
+    "/api/v3/wiki_pages/{id}/attachments/prepare": [
+      "post"
+    ]
+  },
+  "types": [
+    {
+      "id": 1,
+      "name": "Task"
+    },
+    {
+      "id": 2,
+      "name": "Milestone"
+    },
+    {
+      "id": 3,
+      "name": "Summary task"
+    },
+    {
+      "id": 4,
+      "name": "Feature"
+    },
+    {
+      "id": 5,
+      "name": "Epic"
+    },
+    {
+      "id": 6,
+      "name": "User story"
+    },
+    {
+      "id": 7,
+      "name": "Bug"
+    }
+  ],
+  "idempotency_scope": "sequential smoke reruns only; concurrent reconciliation belongs to stage 1"
+}
