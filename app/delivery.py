@@ -9,10 +9,15 @@ from app import db
 from app.config import settings
 from app.integrations import knowledge,tracker,sync_status,RetryableIntegrationError
 from app.reports import create_workbook,monthly,STYLE
+from app.observability import tracer
 
 ARTIFACT_FILES={'report.xlsx','query.sql','qa.json','review.json','financial.json','style.md','architecture.md','acceptance.md','dashboard.py'}
 
 def broker(path,payload=None):
+    with tracer.start_as_current_span('tool.github',attributes={'stage':path.strip('/').replace('-','_')}):
+        return _broker(path,payload)
+
+def _broker(path,payload=None):
     if path not in ['/ready','/publish','/gate','/release','/finalize-release']:raise ValueError('Broker route outside policy')
     try:
         with httpx.Client(timeout=180) as client:
@@ -122,7 +127,9 @@ def prepare_and_publish(story,record):
                 raise db.Conflict('Previously verified artifact is missing or changed')
     else:
         for name,content in files.items():(root/name).write_text(content)
-        create_workbook(record['rows'],metadata,root/'report.xlsx')
+        with tracer.start_as_current_span('artifact.publish',attributes={'story_id':str(story['id']),'backend':'deterministic'}):
+            with tracer.start_as_current_span('agent.financial_analyst',attributes={'role':'financial_analyst','backend':'deterministic'}):
+                create_workbook(record['rows'],metadata,root/'report.xlsx')
         artifacts={name:{'url':f"/stories/{story['id']}/execution/artifacts/{name}",'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
                          'size':path.stat().st_size} for name in ARTIFACT_FILES if (path:=root/name).exists()}
     update(record['id'],artifacts=artifacts)
