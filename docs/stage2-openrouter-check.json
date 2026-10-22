@@ -1,0 +1,23 @@
+{
+  "status": "passed",
+  "backend": "openrouter",
+  "story_id": "4b44e0b1-62f0-4f2d-864d-f0381a749655",
+  "work_package_id": 161,
+  "analytics_status": "REVIEW",
+  "analytics_approved": false,
+  "usage": {
+    "calls": 4,
+    "tokens": 12639,
+    "estimated_cost_usd": 0.003985307,
+    "estimated_calls": 0,
+    "backends": [
+      "openrouter"
+    ],
+    "models": [
+      "deepseek/deepseek-v4.1-flash"
+    ]
+  },
+  "documentation_url": "http://localhost:8082/books/bank-ai-delivery-team/page/ai-4b44e0b1-62f0-4f2d-864d-f0381a749655-r1analytics-pasport-metrik-i-source-to-target-mapping",
+  "expected_rows": 24,
+  "sql_executed": false
+}

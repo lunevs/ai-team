@@ -18,6 +18,7 @@ def test_independent_hand_calculated_month_end():
     assert jan['missing_snapshot_loans']==1
     june=next(r for r in rows if r['month']=='2026-06' and r['product_id']==1 and r['region']=='South')
     assert june['balance'] is None and june['interest_income'] is None
+    assert june['missing_snapshot_loans']==0
     zero=next(r for r in rows if r['month']=='2026-01' and r['product_id']==2 and r['region']=='South')
     assert zero['balance']=='0.00' and zero['npl90_ratio'] is None
     assert all(r['npl90_ratio'] is None or Decimal(0)<=Decimal(r['npl90_ratio'])<=1 for r in rows)

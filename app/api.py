@@ -211,4 +211,20 @@ def approve_analytics(id:uuid.UUID,data:Approval,user=Depends(current_user)):
             db.event(conn,story,'analytics.approved',{'actor':user,'digest':data.plan_digest,'sql_executed':False},f'{id}:{data.revision}:analytics-approved')
             conn.execute("UPDATE stories SET status='IN_PROGRESS',updated_at=now() WHERE id=%s",(id,))
             conn.execute('INSERT INTO status_outbox(story_id) VALUES(%s) ON CONFLICT DO NOTHING',(id,))
+            db.enqueue(conn,id)
     return {'status':'APPROVED'}
+
+@app.post('/stories/{id}/analytics/revise')
+def revise_analytics(id:uuid.UUID,data:Resume,user=Depends(current_user)):
+    if not data.answers.strip():raise HTTPException(422,'Опишите изменение спецификации')
+    require_story(id)
+    with db.story_lock(id):
+        with db.connection() as conn:
+            story=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(id,)).fetchone()
+            run=conn.execute('SELECT status FROM analytics_runs WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()
+            if not run or run['status'] not in ['REVIEW','APPROVED'] or story['status'] not in ['PLAN_REVIEW','IN_PROGRESS']:
+                raise db.Conflict('Спецификацию сейчас нельзя изменить')
+            conn.execute("UPDATE stories SET revision=revision+1,answers=%s,pm=NULL,plan=NULL,plan_digest=NULL,approved=false,questions='[]',status='NEW',error_type=NULL,updated_at=now() WHERE id=%s",(data.answers,id))
+            db.event(conn,story,'analytics.revision_requested',{'actor':user,'new_revision':story['revision']+1})
+            db.enqueue(conn,id)
+    return public_story(require_story(id))

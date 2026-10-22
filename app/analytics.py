@@ -31,8 +31,8 @@ def build_graph(saver):
         story=db.active(state['story_id']);tracker.honor_remote_stop(story['id'])
         info=source_context()
         result=generate(story['id'],'system_analyst',SourceSpecification,
-            {'story':story['text'],'plan':story['plan'],'metadata':info,
-             'instruction':'Опиши source-to-target mapping пяти метрик и гранулярность dm_credit_portfolio_monthly. Используй только перечисленные источники. Неполный month-end срез пометь missing_snapshot_loans; не переноси прошлый день. Это проект спецификации, не SQL. Если история противоречит фиксированному demo-паспорту или требует иных источников, обязательно задай вопросы.'},
+            {'story':story['text'],'answers':story['answers'],'architecture':(story['plan'] or {}).get('architecture','')[:1000],'metadata':info,
+             'instruction':'Опиши source-to-target mapping пяти метрик и гранулярность dm_credit_portfolio_monthly. Используй только перечисленные источники. Ответ краткий: grain до 250 символов, правило mapping до 250 символов, 2 коротких data_quality_rules. Дневной остаток NOT NULL, фиктивные случаи NULL в источнике не обсуждай. Неполный month-end срез пометь missing_snapshot_loans; не переноси прошлый день. Это проект спецификации, не SQL. Согласование выполняется отдельной кнопкой UI. Просьбы подтвердить уже заданные правила не являются questions. questions содержит только недостающие факты, которых нет в story/answers/metadata; при полном контракте questions=[]. Семантика model_contract является заданным контрактом fixture, не придумывай альтернатив и не запрашивай её заново. Если история противоречит фиксированному demo-паспорту или требует иных источников, обязательно задай вопросы.'},
              result_role='system_analyst_spec')
         with db.connection() as conn:
             conn.execute("UPDATE analytics_runs SET status='RUNNING',source_spec=%s,dataset_checksum=%s WHERE story_id=%s AND revision=%s",
@@ -42,10 +42,13 @@ def build_graph(saver):
     def financial(state):
         story=db.active(state['story_id']);tracker.honor_remote_stop(story['id'])
         run=get_run(story['id']);expected=reference()
+        info=source_context()
+        financial_metadata={k:v for k,v in info.items() if k!='columns'}
+        controls=[r for r in expected if (r['month'],r['product_id'],r['region']) in [('2026-01',1,'North'),('2026-01',2,'South'),('2026-06',1,'South')]]
         result=generate(story['id'],'financial_analyst',AnalyticsResult,
-            {'story':story['text'],'source_spec':run['source_spec'],'metadata':source_context(),
-             'control_examples':[r for r in expected if r['month'] in ['2026-01','2026-06']],
-             'instruction':'Подготовь паспорт, бизнес-правила, пользовательские истории и проверки экономического смысла. Не утверждай, что модель исполнила SQL или проверила результат реализации. Данные — синтетический демонстрационный набор. Расхождения с историей/планом обозначь вопросами; не меняй критерии молча.'},
+            {'story':story['text'],'answers':story['answers'],'source_spec':{k:v for k,v in run['source_spec'].items() if k!='data_quality_rules'},'metadata':financial_metadata,
+             'control_examples':controls,
+             'instruction':'Подготовь компактный паспорт, 3 кратких бизнес-правила, 1 пользовательскую историю и 2 проверки экономического смысла. Ответ до 2000 символов. Не утверждай, что модель исполнила SQL или проверила результат реализации. Данные — синтетический демонстрационный набор. Согласование выполняется отдельной кнопкой UI, не добавляй просьбы подтвердить заданные правила в questions. source_row_count/snapshot_loan_count отличают наблюдаемый нулевой остаток от отсутствующего среза. Семантика model_contract и control_examples уже зафиксирована; технические форматы следующих этапов не требуют вопросов. Расхождения с историей/планом обозначь вопросами; не меняй критерии молча.'},
             result_role='financial_analyst_spec')
         with db.connection() as conn:
             conn.execute('UPDATE analytics_runs SET financial_spec=%s,reference_rows=%s WHERE story_id=%s AND revision=%s',
@@ -71,7 +74,7 @@ def build_graph(saver):
             if page not in description:
                 tracker.request(f'/api/v3/work_packages/{task_id}','PATCH',{'lockVersion':remote['lockVersion'],
                     'description':{'format':'markdown','raw':description+'\n\nАналитическая спецификация: '+page}})
-        questions=run['source_spec'].get('questions',[])+run['financial_spec'].get('questions',[])
+        questions=list(dict.fromkeys(run['source_spec'].get('questions',[])+run['financial_spec'].get('questions',[])))
         sync_status(story['id'],'BLOCKED' if questions else 'PLAN_REVIEW')
         with db.connection() as conn:
             current=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(story['id'],)).fetchone()
@@ -91,10 +94,29 @@ def build_graph(saver):
 
 def run(story_id,saver):
     record=get_run(story_id)
-    if record['status'] in ['REVIEW','BLOCKED','APPROVED']:return
+    if record['status']=='APPROVED':
+        sync_approval_documentation(story_id,record)
+        sync_status(story_id,'IN_PROGRESS')
+        return
+    if record['status'] in ['REVIEW','BLOCKED']:return
     graph=build_graph(saver)
     config={'configurable':{'thread_id':f"{story_id}:{record['revision']}:analytics"},'recursion_limit':15}
     snapshot=graph.get_state(config)
     if snapshot.values:
         if snapshot.next:graph.invoke(None,config)
     else:graph.invoke({'story_id':str(story_id)},config)
+
+
+def sync_approval_documentation(story_id,record):
+    db.active(story_id);tracker.honor_remote_stop(story_id)
+    link=db.external(story_id,f"doc:r{record['revision']}:analytics")
+    if not link:raise RuntimeError('Missing specification page')
+    marker=f"<!-- analytics-approved:{story_id}:{record['revision']}:{record['digest']} -->"
+    page=knowledge.request('/pages/'+str(link['external_id']))
+    text=page.get('markdown','')
+    if marker in text:return
+    text=text.replace('# Аналитическая спецификация (проект)','# Аналитическая спецификация (одобрена)',1)
+    text=text.replace('Требует отдельного подтверждения заказчика.','Подтверждена заказчиком для указанной ревизии.',1)
+    text+='\n\n## Согласование\n'+marker+f"\nРевизия: {record['revision']}\nDigest: {record['digest']}\nДата: {record['approved_at']}\nSQL агентом не исполнялся.\n"
+    db.active(story_id)
+    knowledge.request('/pages/'+str(link['external_id']),'PUT',{'name':page['name'],'markdown':text})

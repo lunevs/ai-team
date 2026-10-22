@@ -77,13 +77,25 @@ def reference(data=None):
                     'dpd90_balance':None if npl is None else str(npl.quantize(MONEY, rounding=ROUND_HALF_UP)),
                     'npl90_ratio':str((npl/balance).quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP)) if balance else None,
                     'interest_income':str(sum((Decimal(r['interest_income']) for r in rows),Decimal(0)).quantize(MONEY, rounding=ROUND_HALF_UP)) if rows else None,
+                    'source_row_count':len(rows),'snapshot_loan_count':len(snapshots),
                     'missing_snapshot_loans':len({r['loan_id'] for r in rows}-{r['loan_id'] for r in snapshots})})
     return output
 
 
 def metadata(conn):
     # Fixed schema/table allowlist. No caller-controlled SQL or arbitrary catalog access.
-    rows=conn.execute("SELECT table_name,column_name,data_type FROM information_schema.columns WHERE table_schema='synthetic' ORDER BY table_name,ordinal_position").fetchall()
+    rows=conn.execute("SELECT table_name,column_name,data_type,is_nullable,numeric_precision,numeric_scale FROM information_schema.columns WHERE table_schema='synthetic' ORDER BY table_name,ordinal_position").fetchall()
     info=conn.execute('SELECT version,seed,checksum,row_counts FROM synthetic.dataset_info WHERE singleton=true').fetchone()
     return {'dataset':info,'columns':rows,'metric_defaults':METRICS,
-            'target':'dm_credit_portfolio_monthly', 'synthetic_only':True}
+            'target':'dm_credit_portfolio_monthly', 'synthetic_only':True,'model_contract':MODEL_CONTRACT}
+
+# Business semantics of this versioned fixture, shared with all planning agents.
+MODEL_CONTRACT = {
+    'dimensions': 'Static dim_product.name and dim_customer.region; no SCD. Full grid: 6 months × 2 products × 2 regions, including unobserved combinations.',
+    'missing_snapshot_loans': 'Count DISTINCT loan_id with at least one fact row in the month but no last-calendar-day row in that slice. Exclude loans with no rows at all in that month. Empty set => 0, never NULL. A quality flag, not a monetary measure.',
+    'income_source': 'fact_loan_daily.interest_income, NOT accrued_interest; sum available rows independently of last-day coverage. No rows => NULL, do not scale. Synthetic cashflow is not derived from annual_rate.',
+    'money': 'ROUND_HALF_UP to 2 decimals for all four money metrics after aggregation. Ratio ROUND_HALF_UP to 6 decimals; NULL if numerator missing, denominator missing or zero.',
+    'absent_slice': 'Money and ratio NULL; missing_snapshot_loans=0. This applies also to product/region combinations without loans.',
+    'target_contract': 'dm_credit_portfolio_monthly has month YYYY-MM, product_id, region and five nullable metrics balance, dpd30_balance, dpd90_balance, npl90_ratio, interest_income. missing_snapshot_loans is a separate reference/DQ indicator, not a required mart column. Dataset version/seed/checksum are specification metadata, not mandatory mart columns. fact_loan_daily.outstanding_balance is NOT NULL; a NULL daily balance cannot occur in this fixture.',
+    'reference_format': 'JSON table in specification and UI. CSV/Excel exports and SQL execution belong to later stages, not blockers for this specification.',
+}

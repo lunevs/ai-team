@@ -10,6 +10,7 @@ class Settings:
     backend: str = field(default_factory=lambda: os.getenv('LLM_BACKEND', 'openrouter'))
     model: str = field(default_factory=lambda: os.getenv('OPENROUTER_MODEL', ''))
     llm_key: str = field(default_factory=lambda: os.getenv('OPENROUTER_API_KEY', ''), repr=False)
+    reasoning_mode: str = field(default_factory=lambda: os.getenv('LLM_REASONING_MODE', 'disabled'))
     structured_mode: str = field(default_factory=lambda: os.getenv('LLM_STRUCTURED_MODE', 'json_object'))
     op_url: str = field(default_factory=lambda: os.getenv('OPENPROJECT_URL', 'http://openproject:8080'))
     op_public_url: str = field(default_factory=lambda: os.getenv('OPENPROJECT_PUBLIC_URL', 'http://localhost:8080'))

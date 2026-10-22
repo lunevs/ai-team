@@ -6,6 +6,7 @@ from langgraph.types import interrupt, Command
 from psycopg.types.json import Jsonb
 from app import db
 from app.schemas import PMResult,SAResult
+from app.synthetic import METRICS,SEED,VERSION,MODEL_CONTRACT
 from app.providers import generate
 from app.integrations import ensure_main,sync_status,publish_plan,tracker
 
@@ -23,7 +24,7 @@ def build_graph(saver):
         ensure_main(id)
         sync_status(id,'ANALYSIS')
         story=db.active(id)
-        result=generate(id,'pm',PMResult,{'story':story['text'],'answers':story['answers'],'instruction':'Определи цель, критерии и приоритеты. Задавай вопросы только при невозможности подготовить однозначный план.'})
+        result=generate(id,'pm',PMResult,{'story':story['text'],'answers':story['answers'],'demo_defaults':METRICS,'model_contract':MODEL_CONTRACT,'dataset':{'version':VERSION,'seed':SEED,'months':'2026-01..2026-06','synthetic_only':True},'instruction':'Определи цель, критерии и приоритеты. Для фиксированной демонстрации используй переданный паспорт и набор; при противоречии истории задай вопрос. Не запрашивай заново уже заданные определения. Задавай вопросы только при невозможности подготовить однозначный план.'})
         with db.connection() as conn:
             row=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(id,)).fetchone()
             if row['status']=='CANCELLED': raise db.Cancelled()
@@ -37,7 +38,7 @@ def build_graph(saver):
     def sa_node(state):
         story=db.active(state['story_id'])
         tracker.honor_remote_stop(story['id'])
-        result=generate(story['id'],'system_analyst',SAResult,{'story':story['text'],'answers':story['answers'],'product':state['pm'],'instruction':'Подготовь архитектуру и эпики с задачами, критериями, зависимостями и исполнителями. Не исполняй код. Ключи задач уникальны, зависимости ацикличны. Достаточно 1–2 эпиков и 4–7 задач.'})
+        result=generate(story['id'],'system_analyst',SAResult,{'story':story['text'],'answers':story['answers'],'product':state['pm'],'instruction':'Подготовь архитектуру и эпики с задачами, критериями, зависимостями и исполнителями. Не исполняй код. Ключи задач уникальны, зависимости ацикличны. Ограничь ответ: 1–2 эпика, ровно 4 задачи, максимум 2 коротких критерия на задачу; архитектура до 1200 символов. Не добавляй SQL или подробные скрипты.'})
         return {'plan':result.model_dump(mode='json')}
 
     def publish_node(state):

@@ -1,0 +1,21 @@
+{
+  "backend": "mock",
+  "checks": [
+    "metadata authenticated and fixed synthetic schema",
+    "analytics requires approved plan",
+    "start idempotent",
+    "two structured analysts and published reference",
+    "plan approval cannot approve analytics; stale digest rejected",
+    "analytics checkpoint survives worker restart",
+    "analytics approval idempotent; no SQL execution",
+    "BookStack approval state synchronized without LLM calls",
+    "changes create revision and require renewed plan approval",
+    "cancellation prevents old analytical approval",
+    "shared budget blocks financial call"
+  ],
+  "story_ids": [
+    "32d09a0f-fe7e-4d3d-bad6-add0eb5d0d18",
+    "beb9cfca-7261-4b75-856c-ff9f071159bd"
+  ],
+  "status": "passed"
+}
