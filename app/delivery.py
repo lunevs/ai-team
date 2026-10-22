@@ -28,6 +28,24 @@ def artifact_path(run_id,name):
     if name not in ARTIFACT_FILES:raise ValueError('Unknown artifact')
     return Path(os.getenv('ARTIFACT_ROOT','/data/artifacts'))/uuid.UUID(str(run_id)).hex/name
 
+def publish_tasks(story,record,documentation_url,tasks):
+    from app.execution import update,event
+    existing=record['git'] or {}
+    pulls={p['task_id']:p for p in existing.get('pulls',[])}
+    result=existing|{'pulls':list(pulls.values()),'documentation_url':documentation_url}
+    for task in tasks:
+        tracker.honor_remote_stop(story['id'])
+        if task['task_id'] in pulls:continue
+        published=broker('/publish',{'run_id':str(record['id']),'story_id':str(story['id']),
+            'revision':story['revision'],'documentation_url':documentation_url,'tasks':[task]})
+        for pull in published['pulls']:pulls[pull['task_id']]=pull
+        result=published|{'pulls':list(pulls.values()),'documentation_url':documentation_url}
+        # An already sent HTTP request can complete during cancellation. Keep its result
+        # for audit before checking the stop again; never start the next task after a stop.
+        update(record['id'],status='PUBLISHED',git=result)
+        event(story,'execution.task_published',{'pulls':published['pulls']},f"{record['id']}:task-published:{task['task_id']}")
+    return result
+
 def complete_acceptance(story,record):
     from app.execution import update,event
     tracker.honor_remote_stop(story['id'])
@@ -61,6 +79,12 @@ def finalize_delivery(story,record):
     for epic_id in sorted({p['epic_id'] for p in record['git']['pulls']}):
         item=tracker.request('/api/v3/work_packages/'+str(epic_id))
         tracker.request('/api/v3/work_packages/'+str(epic_id),'PATCH',{'lockVersion':item['lockVersion'],
+            '_links':{'status':{'href':'/api/v3/statuses/'+str(settings.status_ids['DONE'])}}})
+    goal=db.external(story['id'],f"r{story['revision']}:goal")
+    if goal:
+        tracker.honor_remote_stop(story['id'])
+        item=tracker.request('/api/v3/work_packages/'+str(goal['external_id']))
+        tracker.request('/api/v3/work_packages/'+str(goal['external_id']),'PATCH',{'lockVersion':item['lockVersion'],
             '_links':{'status':{'href':'/api/v3/statuses/'+str(settings.status_ids['DONE'])}}})
     knowledge.ensure_page(story['id'],f"r{story['revision']}:acceptance",'Приёмка результата',
         '# Приёмка\n\nЗаказчик: '+record['business_accepted_by']+'\nДата: '+record['business_accepted_at'].isoformat()+
@@ -125,8 +149,7 @@ def prepare_and_publish(story,record):
             tasks.append({'task_id':int(task_ref['external_id']),'epic_id':int(epic_ref['external_id']),'role':task['role'],
                           'files':{n:base64.b64encode((root/n).read_bytes()).decode() for n in role_files[task['role']]}})
     tracker.honor_remote_stop(story['id'])
-    result=broker('/publish',{'run_id':str(record['id']),'story_id':str(story['id']),'revision':story['revision'],'documentation_url':doc,'tasks':tasks})
-    result['documentation_url']=doc
+    result=publish_tasks(story,record,doc,tasks)
     # Persist actual PR identities before tracker writes, allowing safe retry after an outage.
     update(record['id'],status='PUBLISHED',git=result)
     for pull in result['pulls']:

@@ -1,5 +1,9 @@
 """Host E2E against real integrations and a dedicated mock worker; no credentials printed."""
 exec(open('scripts/run_stage1_checks.py').read().split("call('/stories',authorized=False")[0])
+probe=subprocess.run(['docker','exec','ai-team-stage3-mock','python','-c',
+    'import json; from app.delivery import broker; print(json.dumps(broker("/ready")))'],
+    check=True,capture_output=True,text=True,timeout=60)
+assert not json.loads(probe.stdout)['configured'],'Mock E2E requires an isolated tokenless Git broker; see README.'
 
 def prepared(marker,max_calls=8):
     created,_,_=create(marker+' Создать синтетическую витрину кредитного портфеля по месяцам и Excel-отчёт',max_calls=max_calls)

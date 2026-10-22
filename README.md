@@ -226,3 +226,17 @@ Broker создаёт `feature/<task>` и PR в `release/<epic>`; commit фик�
 API: `POST /stories/{id}/execution/start`, `/retry`, `/gate`, `/accept` (revision + analytics digest в `plan_digest`), `/finalize-release`; `GET /stories/{id}/execution/artifacts/{name}`. `GET /stories/{id}` включает execution, QA, review, реальные PR и манифест файлов. После старта SQL критерии меняются через отмену и новую историю.
 
 Проверки: `tests/unit` и `tests/integration`; host-скрипт `scripts/run_stage3_checks.py` требует отдельный worker `ai-team-stage3-mock` с `LLM_BACKEND=mock` и остановленный штатный worker. Он создаёт и отменяет собственные истории, проверяет исправления, скачивания, рестарт и отсутствие ложной приёмки. `scripts/run_stage3_security_checks.py` проверяет действительные права/сеть/лимиты внутри ограниченных сервисов. Отчёты: `docs/stage3-*.json`; реальный LLM и mock отмечены раздельно. Положительный выпуск с настоящим GitHub требует сервисного токена, независимого review и ручных merge.
+
+Mock E2E требует отдельный broker без GitHub-токена, чтобы тестовые истории не публиковались в репозиторий:
+
+```sh
+docker compose stop worker
+docker compose run -d --no-deps --name ai-team-stage3-git-mock -e GITHUB_RUNTIME_TOKEN= git-broker
+docker compose run -d --no-deps --name ai-team-stage3-mock -e LLM_BACKEND=mock -e GIT_BROKER_URL=http://ai-team-stage3-git-mock:8000 worker
+python3 scripts/run_stage3_checks.py
+# Выполнить очистку и вернуть штатный worker также при ошибке теста:
+docker rm -f ai-team-stage3-mock ai-team-stage3-git-mock
+docker compose start worker
+```
+
+Служебная реальная история №219 прошла создание шести PR #22–27 в release/221 и release/226 от тестовой feature/193. Повтор вернул тот же commit/PR; CI успешен, независимое review и merge ожидаются. Штатная база остаётся release/188. Подробности — `docs/stage3-github-check.json`. PR реализации #17–21 и PR результатов #22–27 имеют разное назначение.
