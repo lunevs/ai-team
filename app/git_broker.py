@@ -165,7 +165,8 @@ def publish(data:Publish,authorization:str=Header(default='')):
     if not readiness.get('base_ready'):raise HTTPException(409,'Merge stage 3 implementation before runtime publication')
     base=readiness['base_sha']
     # Stable refs and markers reconcile partial publication after process/network failures.
-    return {'pulls':[publish_task(data,task,base) for task in data.tasks],'independent_review_required':True}
+    return {'pulls':[publish_task(data,task,base) for task in data.tasks],'independent_review_required':True,
+            'base_ref':os.getenv('GITHUB_BASE_REF','release/188'),'base_commit':base}
 
 
 def evaluate_pull(pr,reviews,checks,statuses,expected_commit):

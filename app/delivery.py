@@ -136,6 +136,13 @@ def prepare_and_publish(story,record):
         if pull['pull_request_url'] not in item['description']['raw']:
             tracker.request('/api/v3/work_packages/'+str(pull['task_id']),'PATCH',{'lockVersion':item['lockVersion'],
                 'description':{'format':'markdown','raw':item['description']['raw']+addition}})
+    page_ref=db.external(story['id'],f"doc:r{story['revision']}:execution")
+    page=knowledge.request('/pages/'+str(page_ref['external_id']))
+    publication_marker=f"publication:{record['id']}"
+    if publication_marker not in page['markdown']:
+        tracker.honor_remote_stop(story['id'])
+        knowledge.request('/pages/'+str(page_ref['external_id']),'PUT',{'name':page['name'],
+            'markdown':page['markdown']+'\n\n## GitHub PR\n\n'+publication_marker+'\n\n'+json.dumps(result,ensure_ascii=False,indent=2)})
     sync_status(story['id'],'ACCEPTANCE')
     update(record['id'],status='ACCEPTANCE')
     event(story,'execution.published',{'pulls':result['pulls'],'documentation_url':doc},f"{record['id']}:published")
