@@ -1,0 +1,31 @@
+groups:
+  - name: ai-team-budget
+    rules:
+      - alert: AiTeamBudgetNearLimit
+        expr: max by (story_id, dimension) (ai_team_story_budget_ratio) >= 0.8
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'История использовала не менее 80% бюджета'
+      - alert: AiTeamBudgetExhausted
+        expr: max by (story_id, dimension) (ai_team_story_budget_ratio) >= 1
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Лимит истории достигнут; проверьте состояние workflow'
+      - alert: AiTeamLedgerUnavailable
+        expr: up{job="ai-team-ledger"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Агрегаты журнала приложения недоступны'
+      - alert: AiTeamCollectorUnavailable
+        expr: up{job="otel-collector"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Collector недоступен; workflow продолжает работу с журналом PostgreSQL'

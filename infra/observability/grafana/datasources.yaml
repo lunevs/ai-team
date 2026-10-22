@@ -1,0 +1,37 @@
+apiVersion: 1
+datasources:
+  - name: Ledger metrics
+    uid: ai-team-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+  - name: Application logs
+    uid: ai-team-loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - name: TraceID
+          datasourceUid: ai-team-tempo
+          matcherRegex: '"trace_id":\s*"([a-f0-9]{32})"'
+          url: '$${__value.raw}'
+  - name: Application traces
+    uid: ai-team-tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: ai-team-loki
+        spanStartTimeShift: '-1m'
+        spanEndTimeShift: '1m'
+        filterByTraceID: false
+        filterBySpanID: false
+        customQuery: true
+        query: '{service_name=~"ai-team-.*"} | json | trace_id="$${__trace.traceId}"'
