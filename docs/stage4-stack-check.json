@@ -1,0 +1,92 @@
+{
+  "grafana_health": {
+    "database": "ok",
+    "version": "13.2.4",
+    "commit": "0e79aef9d91abf3bdadae9af15763029072fb45b"
+  },
+  "datasources": {
+    "prometheus": {
+      "details": {
+        "application": "Prometheus",
+        "features": {
+          "rulerApiEnabled": false
+        }
+      },
+      "message": "Successfully queried the Prometheus API.",
+      "status": "OK"
+    },
+    "loki": {
+      "message": "Data source successfully connected.",
+      "status": "OK"
+    },
+    "tempo": {
+      "message": "Data source is working",
+      "status": "OK"
+    }
+  },
+  "dashboard": "ai-team-operations",
+  "queries": [
+    {
+      "panel": "Истории DONE · все backend",
+      "successful": true
+    },
+    {
+      "panel": "LLM-вызовы · весь журнал",
+      "successful": true
+    },
+    {
+      "panel": "Расход USD · фактический + резерв",
+      "successful": true
+    },
+    {
+      "panel": "Доля ошибок LLM · весь журнал",
+      "successful": true
+    },
+    {
+      "panel": "Токены · фактические и зарезервированные",
+      "successful": true
+    },
+    {
+      "panel": "USD · фактические и зарезервированные",
+      "successful": true
+    },
+    {
+      "panel": "Бюджеты последних активных историй",
+      "successful": true
+    },
+    {
+      "panel": "LLM p95 · весь журнал, успешные вызовы",
+      "successful": true
+    },
+    {
+      "panel": "Длительность операций p95 · выбранное окно и история",
+      "successful": true
+    },
+    {
+      "panel": "QA · сохранённые попытки",
+      "successful": true
+    },
+    {
+      "panel": "Предупреждения и критические лимиты",
+      "successful": true
+    },
+    {
+      "panel": "Состояния историй · весь журнал",
+      "successful": true
+    },
+    {
+      "panel": "Логи истории · TraceID открывает Tempo",
+      "successful": true
+    }
+  ],
+  "prometheus_targets": [
+    {
+      "job": "ai-team-ledger",
+      "health": "up"
+    },
+    {
+      "job": "otel-collector",
+      "health": "up"
+    }
+  ]
+}
