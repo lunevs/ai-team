@@ -41,10 +41,11 @@ def require_story(id):
 
 def public_story(row):
     from app.analytics import get_run
+    from app.execution import get_run as get_execution
     with db.connection() as conn:
         links=conn.execute('SELECT key,external_id,url FROM external_ids WHERE story_id=%s ORDER BY key',(row['id'],)).fetchall()
     main=next((x['external_id'] for x in links if x['key']=='main'),None)
-    return {k:row[k] for k in ['id','text','status','revision','pm','plan','plan_digest','approved','questions','trace_id','error_type','created_at','updated_at']} | {'story_id':row['id'],'openproject_work_package_id':main,'links':links,'usage':db.usage(row['id']),'analytics':get_run(row['id'],row['revision'])}
+    return {k:row[k] for k in ['id','text','status','revision','pm','plan','plan_digest','approved','questions','trace_id','error_type','created_at','updated_at']} | {'story_id':row['id'],'openproject_work_package_id':main,'links':links,'usage':db.usage(row['id']),'analytics':get_run(row['id'],row['revision']),'execution':get_execution(row['id'],row['revision'])}
 
 @app.post('/stories',status_code=201)
 def create(data:StoryInput,response:Response,idempotency_key:str=Header(min_length=8,max_length=128),user=Depends(current_user)):
@@ -228,3 +229,34 @@ def revise_analytics(id:uuid.UUID,data:Resume,user=Depends(current_user)):
             db.event(conn,story,'analytics.revision_requested',{'actor':user,'new_revision':story['revision']+1})
             db.enqueue(conn,id)
     return public_story(require_story(id))
+
+
+@app.post('/stories/{id}/execution/start',status_code=202)
+def start_execution(id:uuid.UUID,user=Depends(current_user)):
+    require_story(id)
+    with db.story_lock(id):
+        with db.connection() as conn:
+            story=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(id,)).fetchone()
+            if story['status'] in ['CANCELLED','BLOCKED','FAILED','DONE']:raise db.Conflict('История не готова к исполнению')
+            existing=conn.execute('SELECT id,status FROM execution_runs WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()
+            if existing:return existing
+            spec=conn.execute('SELECT * FROM analytics_runs WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()
+            if not spec or spec['status']!='APPROVED':raise db.Conflict('Сначала одобрите аналитическую спецификацию')
+            run_id=uuid.uuid4()
+            conn.execute('INSERT INTO execution_runs(id,story_id,revision,analytics_digest) VALUES(%s,%s,%s,%s)',(run_id,id,story['revision'],spec['digest']))
+            db.event(conn,story,'execution.requested',{'run_id':str(run_id),'actor':user},f'{run_id}:requested')
+            db.enqueue(conn,id)
+    return {'id':run_id,'status':'REQUESTED'}
+
+@app.post('/stories/{id}/execution/retry',status_code=202)
+def retry_execution(id:uuid.UUID,user=Depends(current_user)):
+    require_story(id)
+    with db.story_lock(id):
+        with db.connection() as conn:
+            story=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(id,)).fetchone()
+            record=conn.execute('SELECT * FROM execution_runs WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()
+            if not record or record['status'] not in ['WAITING_GITHUB','READY_TO_PUBLISH','PUBLISHED'] or story['status']=='CANCELLED':
+                raise db.Conflict('Повтор публикации сейчас недоступен')
+            conn.execute("UPDATE stories SET status='IN_PROGRESS',error_type=NULL WHERE id=%s",(id,))
+            db.enqueue(conn,id)
+    return {'status':'QUEUED'}
