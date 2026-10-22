@@ -26,7 +26,7 @@ panel('USD · фактические и зарезервированные','tim
       prom(f'sum by (accounting) (ai_team_llm_cost_usd{{{selector}}})','{{accounting}}'),12,4,
       fieldConfig={'defaults':{'unit':'currencyUSD'},'overrides':[]})
 panel('Бюджеты последних активных историй','bargauge','ai-team-prometheus',
-      prom(f'topk(10,ai_team_story_budget_ratio{{story_id=~"$story_id",{selector}}})','{{story_id}} / {{dimension}}'),0,12,
+      [prom(f'topk(10,ai_team_story_budget_ratio{{story_id=~"$story_id",{selector}}})','{{story_id}} / {{dimension}}')[0]|{'instant':True,'range':False}],0,12,
       fieldConfig={'defaults':{'unit':'percentunit','min':0,'max':1,'thresholds':{'mode':'absolute','steps':[{'color':'green','value':None},{'color':'orange','value':.8},{'color':'red','value':1}]}},'overrides':[]},
       options={'orientation':'horizontal','displayMode':'gradient','reduceOptions':{'calcs':['lastNotNull'],'fields':'','values':False}})
 panel('LLM p95 · весь журнал, успешные вызовы','timeseries','ai-team-prometheus',
@@ -49,7 +49,7 @@ panel('Логи истории · TraceID открывает Tempo','logs','ai-t
 panel('Как читать показатели','text','ai-team-prometheus',[],0,48,w=24,h=4,
       options={'mode':'markdown','content':'**Story UUID / regex** фильтрует бюджет, операции и логи. Backend фильтрует метрики LLM.\n\nGauge-показатели берутся из всего committed ledger; выбранный период показывает их изменение, а не расходы только за период. Actual и reserved не перекрываются. Статусы включают служебные тестовые истории. Traces/logs хранятся 48 часов и не заменяют журнал PostgreSQL.\n\nОткройте **TraceID** у строки лога для просмотра spans в Tempo. Внешние уведомления отсутствуют.'})
 
-dashboard={'uid':'ai-team-operations','title':'AI Team · Delivery operations','schemaVersion':41,'version':1,'editable':False,
+dashboard={'uid':'ai-team-operations','title':'AI Team · Delivery operations','schemaVersion':41,'version':2,'editable':False,
            'timezone':'browser','refresh':'15s','time':{'from':'now-1h','to':'now'},'tags':['ai-team','observability'],
            'templating':{'list':[
                {'name':'story_id','label':'Story UUID / regex','type':'textbox','query':'.*','current':{'text':'.*','value':'.*'}},

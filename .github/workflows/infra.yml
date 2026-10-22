@@ -19,8 +19,13 @@ jobs:
         run: |
           python scripts/init_env.py
           docker compose config --quiet
+          docker compose --profile observability config --quiet
           docker compose config --services
           git check-ignore .env
+      - name: Validate Collector and budget rules
+        run: |
+          docker compose --profile observability run --rm --no-deps otel-collector validate --config=/etc/otelcol/config.yaml
+          docker compose --profile observability run --rm --no-deps --entrypoint /bin/promtool prometheus check rules /etc/prometheus/alerts.yaml
       - name: Verify clean PostgreSQL initialization
         run: |
           docker compose up -d --wait postgres

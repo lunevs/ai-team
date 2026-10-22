@@ -10,6 +10,13 @@ from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider,SpanLimits
 from opentelemetry.trace import Status,StatusCode
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+class ApplicationBatchSpanProcessor(BatchSpanProcessor):
+    """Framework/library spans never enter the export queue, even if enabled upstream."""
+    def on_end(self,span):
+        if span.instrumentation_scope and span.instrumentation_scope.name=='ai-team':
+            super().on_end(span)
 
 ROLES={'pm','system_analyst','financial_analyst','data_developer','application_developer','designer','qa'}
 EVENTS={'api.error','tracker.pending','team.tracker_unavailable','llm.validation_failed','llm.failed',
@@ -58,11 +65,10 @@ endpoint=os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT','').rstrip('/')
 if endpoint:
     if endpoint!='http://otel-collector:4318':raise ValueError('Only the local telemetry collector is enabled')
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
     from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
     from opentelemetry.sdk._logs import LoggerProvider,LoggingHandler
     from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint+'/v1/traces',timeout=2),
+    provider.add_span_processor(ApplicationBatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint+'/v1/traces',timeout=2),
         max_queue_size=512,max_export_batch_size=32,schedule_delay_millis=1000,export_timeout_millis=2500))
     log_provider=LoggerProvider(resource=provider.resource)
     log_provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter(endpoint=endpoint+'/v1/logs',timeout=2),
@@ -80,7 +86,7 @@ class SafeTracer:
 
     @contextmanager
     def start_as_current_span(self,name,context=None,attributes=None):
-        allowed={'story.run','llm.request','tracker.create','tool.sql','tool.github','tool.knowledge','artifact.publish'}|{'agent.'+r for r in ROLES}
+        allowed={'story.run','llm.request','tracker.create','tool.sql','tool.github','tool.knowledge','artifact.publish','telemetry.probe'}|{'agent.'+r for r in ROLES}
         if name not in allowed:raise ValueError('Unknown telemetry operation')
         attributes=metadata(attributes or {})
         parent_attributes=getattr(trace.get_current_span(),'attributes',{}) or {}

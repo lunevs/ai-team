@@ -1,0 +1,1486 @@
+{
+  "samples": [
+    {
+      "phase": "profile-off",
+      "containers": [
+        {
+          "name": "ai-team-api-1",
+          "memory": "72.11MiB / 512MiB",
+          "cpu": "0.20%"
+        },
+        {
+          "name": "ai-team-ui-1",
+          "memory": "108.4MiB / 512MiB",
+          "cpu": "0.50%"
+        },
+        {
+          "name": "ai-team-git-broker-1",
+          "memory": "37.33MiB / 256MiB",
+          "cpu": "0.19%"
+        },
+        {
+          "name": "ai-team-sandbox-1",
+          "memory": "48.63MiB / 256MiB",
+          "cpu": "0.19%"
+        },
+        {
+          "name": "ai-team-postgres-1",
+          "memory": "125.2MiB / 512MiB",
+          "cpu": "17.73%"
+        },
+        {
+          "name": "ai-team-op-cron-1",
+          "memory": "1.422MiB / 256MiB",
+          "cpu": "0.00%"
+        },
+        {
+          "name": "ai-team-openproject-1",
+          "memory": "1.442GiB / 1.5GiB",
+          "cpu": "102.01%"
+        },
+        {
+          "name": "ai-team-op-worker-1",
+          "memory": "760.3MiB / 1.5GiB",
+          "cpu": "3.56%"
+        },
+        {
+          "name": "ai-team-bookstack-1",
+          "memory": "82.06MiB / 512MiB",
+          "cpu": "0.17%"
+        },
+        {
+          "name": "ai-team-bookstack-db-1",
+          "memory": "156.5MiB / 384MiB",
+          "cpu": "2.29%"
+        },
+        {
+          "name": "ai-team-cache-1",
+          "memory": "18.82MiB / 96MiB",
+          "cpu": "0.51%"
+        },
+        {
+          "name": "ai-team-hocuspocus-1",
+          "memory": "140.8MiB / 256MiB",
+          "cpu": "0.56%"
+        }
+      ],
+      "observer_mib": 0,
+      "installation_mib": 3028.18
+    },
+    {
+      "phase": "profile-on-idle",
+      "containers": [
+        {
+          "name": "ai-team-api-1",
+          "memory": "77.3MiB / 512MiB",
+          "cpu": "1.83%"
+        },
+        {
+          "name": "ai-team-ui-1",
+          "memory": "108.4MiB / 512MiB",
+          "cpu": "18.75%"
+        },
+        {
+          "name": "ai-team-git-broker-1",
+          "memory": "37.33MiB / 256MiB",
+          "cpu": "0.57%"
+        },
+        {
+          "name": "ai-team-sandbox-1",
+          "memory": "48.63MiB / 256MiB",
+          "cpu": "0.25%"
+        },
+        {
+          "name": "ai-team-grafana-1",
+          "memory": "249.8MiB / 256MiB",
+          "cpu": "1.32%"
+        },
+        {
+          "name": "ai-team-loki-1",
+          "memory": "85.2MiB / 384MiB",
+          "cpu": "1.04%"
+        },
+        {
+          "name": "ai-team-tempo-1",
+          "memory": "59.86MiB / 256MiB",
+          "cpu": "0.54%"
+        },
+        {
+          "name": "ai-team-prometheus-1",
+          "memory": "76.04MiB / 192MiB",
+          "cpu": "1.48%"
+        },
+        {
+          "name": "ai-team-otel-collector-1",
+          "memory": "44.09MiB / 128MiB",
+          "cpu": "1.85%"
+        },
+        {
+          "name": "ai-team-postgres-1",
+          "memory": "124.8MiB / 512MiB",
+          "cpu": "3.31%"
+        },
+        {
+          "name": "ai-team-op-cron-1",
+          "memory": "1.422MiB / 256MiB",
+          "cpu": "0.00%"
+        },
+        {
+          "name": "ai-team-openproject-1",
+          "memory": "1.442GiB / 1.5GiB",
+          "cpu": "14.24%"
+        },
+        {
+          "name": "ai-team-op-worker-1",
+          "memory": "760.3MiB / 1.5GiB",
+          "cpu": "0.47%"
+        },
+        {
+          "name": "ai-team-bookstack-1",
+          "memory": "82.06MiB / 512MiB",
+          "cpu": "0.18%"
+        },
+        {
+          "name": "ai-team-bookstack-db-1",
+          "memory": "156.5MiB / 384MiB",
+          "cpu": "0.08%"
+        },
+        {
+          "name": "ai-team-cache-1",
+          "memory": "18.82MiB / 96MiB",
+          "cpu": "0.38%"
+        },
+        {
+          "name": "ai-team-hocuspocus-1",
+          "memory": "140.8MiB / 256MiB",
+          "cpu": "0.96%"
+        }
+      ],
+      "observer_mib": 514.99,
+      "installation_mib": 3547.96
+    },
+    {
+      "phase": "mock-workload",
+      "containers": [
+        {
+          "name": "ai-team-stage4-mock",
+          "memory": "76.64MiB / 512MiB",
+          "cpu": "3.37%"
+        },
+        {
+          "name": "ai-team-stage4-git-mock",
+          "memory": "38.8MiB / 256MiB",
+          "cpu": "0.15%"
+        },
+        {
+          "name": "ai-team-api-1",
+          "memory": "114.2MiB / 512MiB",
+          "cpu": "10.41%"
+        },
+        {
+          "name": "ai-team-ui-1",
+          "memory": "118.1MiB / 512MiB",
+          "cpu": "7.42%"
+        },
+        {
+          "name": "ai-team-git-broker-1",
+          "memory": "38.12MiB / 256MiB",
+          "cpu": "0.20%"
+        },
+        {
+          "name": "ai-team-sandbox-1",
+          "memory": "46.81MiB / 256MiB",
+          "cpu": "0.16%"
+        },
+        {
+          "name": "ai-team-grafana-1",
+          "memory": "246.8MiB / 256MiB",
+          "cpu": "2.36%"
+        },
+        {
+          "name": "ai-team-loki-1",
+          "memory": "81.57MiB / 384MiB",
+          "cpu": "1.39%"
+        },
+        {
+          "name": "ai-team-tempo-1",
+          "memory": "39.41MiB / 256MiB",
+          "cpu": "0.48%"
+        },
+        {
+          "name": "ai-team-prometheus-1",
+          "memory": "34.11MiB / 192MiB",
+          "cpu": "0.22%"
+        },
+        {
+          "name": "ai-team-otel-collector-1",
+          "memory": "43.16MiB / 128MiB",
+          "cpu": "0.11%"
+        },
+        {
+          "name": "ai-team-postgres-1",
+          "memory": "149.4MiB / 512MiB",
+          "cpu": "37.71%"
+        },
+        {
+          "name": "ai-team-op-cron-1",
+          "memory": "1004KiB / 256MiB",
+          "cpu": "0.00%"
+        },
+        {
+          "name": "ai-team-openproject-1",
+          "memory": "1.442GiB / 1.5GiB",
+          "cpu": "104.46%"
+        },
+        {
+          "name": "ai-team-op-worker-1",
+          "memory": "760.4MiB / 1.5GiB",
+          "cpu": "9.55%"
+        },
+        {
+          "name": "ai-team-bookstack-1",
+          "memory": "82.72MiB / 512MiB",
+          "cpu": "0.07%"
+        },
+        {
+          "name": "ai-team-bookstack-db-1",
+          "memory": "160.7MiB / 384MiB",
+          "cpu": "0.05%"
+        },
+        {
+          "name": "ai-team-cache-1",
+          "memory": "18.83MiB / 96MiB",
+          "cpu": "0.87%"
+        },
+        {
+          "name": "ai-team-hocuspocus-1",
+          "memory": "141.6MiB / 256MiB",
+          "cpu": "0.47%"
+        }
+      ],
+      "observer_mib": 445.05,
+      "installation_mib": 3668.96
+    },
+    {
+      "phase": "mock-workload",
+      "containers": [
+        {
+          "name": "ai-team-stage4-mock",
+          "memory": "82.82MiB / 512MiB",
+          "cpu": "0.06%"
+        },
+        {
+          "name": "ai-team-stage4-git-mock",
+          "memory": "38.95MiB / 256MiB",
+          "cpu": "0.18%"
+        },
+        {
+          "name": "ai-team-api-1",
+          "memory": "114.4MiB / 512MiB",
+          "cpu": "4.73%"
+        },
+        {
+          "name": "ai-team-ui-1",
+          "memory": "108.9MiB / 512MiB",
+          "cpu": "0.52%"
+        },
+        {
+          "name": "ai-team-git-broker-1",
+          "memory": "36.88MiB / 256MiB",
+          "cpu": "22.04%"
+        },
+        {
+          "name": "ai-team-sandbox-1",
+          "memory": "46.81MiB / 256MiB",
+          "cpu": "0.14%"
+        },
+        {
+          "name": "ai-team-grafana-1",
+          "memory": "244.5MiB / 256MiB",
+          "cpu": "5.38%"
+        },
+        {
+          "name": "ai-team-loki-1",
+          "memory": "82.2MiB / 384MiB",
+          "cpu": "0.85%"
+        },
+        {
+          "name": "ai-team-tempo-1",
+          "memory": "40.42MiB / 256MiB",
+          "cpu": "0.29%"
+        },
+        {
+          "name": "ai-team-prometheus-1",
+          "memory": "34.27MiB / 192MiB",
+          "cpu": "0.17%"
+        },
+        {
+          "name": "ai-team-otel-collector-1",
+          "memory": "43.54MiB / 128MiB",
+          "cpu": "0.18%"
+        },
+        {
+          "name": "ai-team-postgres-1",
+          "memory": "126.8MiB / 512MiB",
+          "cpu": "23.04%"
+        },
+        {
+          "name": "ai-team-op-cron-1",
+          "memory": "1004KiB / 256MiB",
+          "cpu": "0.00%"
+        },
+        {
+          "name": "ai-team-openproject-1",
+          "memory": "1.442GiB / 1.5GiB",
+          "cpu": "102.59%"
+        },
+        {
+          "name": "ai-team-op-worker-1",
+          "memory": "764.1MiB / 1.5GiB",
+          "cpu": "0.22%"
+        },
+        {
+          "name": "ai-team-bookstack-1",
+          "memory": "84.97MiB / 512MiB",
+          "cpu": "0.02%"
+        },
+        {
+          "name": "ai-team-bookstack-db-1",
+          "memory": "156MiB / 384MiB",
+          "cpu": "0.05%"
+        },
+        {
+          "name": "ai-team-cache-1",
+          "memory": "19.07MiB / 96MiB",
+          "cpu": "0.99%"
+        },
+        {
+          "name": "ai-team-hocuspocus-1",
+          "memory": "141.6MiB / 256MiB",
+          "cpu": "0.03%"
+        }
+      ],
+      "observer_mib": 444.93,
+      "installation_mib": 3643.82
+    },
+    {
+      "phase": "mock-workload",
+      "containers": [
+        {
+          "name": "ai-team-stage4-mock",
+          "memory": "84.35MiB / 512MiB",
+          "cpu": "0.01%"
+        },
+        {
+          "name": "ai-team-stage4-git-mock",
+          "memory": "39.01MiB / 256MiB",
+          "cpu": "0.23%"
+        },
+        {
+          "name": "ai-team-api-1",
+          "memory": "115.8MiB / 512MiB",
+          "cpu": "1.99%"
+        },
+        {
+          "name": "ai-team-ui-1",
+          "memory": "108.7MiB / 512MiB",
+          "cpu": "0.52%"
+        },
+        {
+          "name": "ai-team-git-broker-1",
+          "memory": "37.05MiB / 256MiB",
+          "cpu": "22.77%"
+        },
+        {
+          "name": "ai-team-sandbox-1",
+          "memory": "46.81MiB / 256MiB",
+          "cpu": "0.20%"
+        },
+        {
+          "name": "ai-team-grafana-1",
+          "memory": "242.6MiB / 256MiB",
+          "cpu": "3.86%"
+        },
+        {
+          "name": "ai-team-loki-1",
+          "memory": "83.94MiB / 384MiB",
+          "cpu": "0.75%"
+        },
+        {
+          "name": "ai-team-tempo-1",
+          "memory": "41.22MiB / 256MiB",
+          "cpu": "0.26%"
+        },
+        {
+          "name": "ai-team-prometheus-1",
+          "memory": "34.27MiB / 192MiB",
+          "cpu": "0.19%"
+        },
+        {
+          "name": "ai-team-otel-collector-1",
+          "memory": "44.29MiB / 128MiB",
+          "cpu": "0.28%"
+        },
+        {
+          "name": "ai-team-postgres-1",
+          "memory": "129.1MiB / 512MiB",
+          "cpu": "16.55%"
+        },
+        {
+          "name": "ai-team-op-cron-1",
+          "memory": "1004KiB / 256MiB",
+          "cpu": "0.00%"
+        },
+        {
+          "name": "ai-team-openproject-1",
+          "memory": "1.442GiB / 1.5GiB",
+          "cpu": "102.46%"
+        },
+        {
+          "name": "ai-team-op-worker-1",
+          "memory": "764.1MiB / 1.5GiB",
+          "cpu": "0.06%"
+        },
+        {
+          "name": "ai-team-bookstack-1",
+          "memory": "82.65MiB / 512MiB",
+          "cpu": "0.02%"
+        },
+        {
+          "name": "ai-team-bookstack-db-1",
+          "memory": "156MiB / 384MiB",
+          "cpu": "0.02%"
+        },
+        {
+          "name": "ai-team-cache-1",
+          "memory": "18.82MiB / 96MiB",
+          "cpu": "0.85%"
+        },
+        {
+          "name": "ai-team-hocuspocus-1",
+          "memory": "141.6MiB / 256MiB",
+          "cpu": "0.19%"
+        }
+      ],
+      "observer_mib": 446.32,
+      "installation_mib": 3647.9
+    },
+    {
+      "phase": "mock-workload",
+      "containers": [
+        {
+          "name": "ai-team-stage4-mock",
+          "memory": "87.68MiB / 512MiB",
+          "cpu": "0.04%"
+        },
+        {
+          "name": "ai-team-stage4-git-mock",
+          "memory": "39.02MiB / 256MiB",
+          "cpu": "0.15%"
+        },
+        {
+          "name": "ai-team-api-1",
+          "memory": "118.8MiB / 512MiB",
+          "cpu": "4.47%"
+        },
+        {
+          "name": "ai-team-ui-1",
+          "memory": "108.9MiB / 512MiB",
+          "cpu": "26.71%"
+        },
+        {
+          "name": "ai-team-git-broker-1",
+          "memory": "37.05MiB / 256MiB",
+          "cpu": "21.18%"
+        },
+        {
+          "name": "ai-team-sandbox-1",
+          "memory": "46.81MiB / 256MiB",
+          "cpu": "0.15%"
+        },
+        {
+          "name": "ai-team-grafana-1",
+          "memory": "245.2MiB / 256MiB",
+          "cpu": "4.58%"
+        },
+        {
+          "name": "ai-team-loki-1",
+          "memory": "85.65MiB / 384MiB",
+          "cpu": "1.88%"
+        },
+        {
+          "name": "ai-team-tempo-1",
+          "memory": "41.99MiB / 256MiB",
+          "cpu": "0.59%"
+        },
+        {
+          "name": "ai-team-prometheus-1",
+          "memory": "34.36MiB / 192MiB",
+          "cpu": "0.24%"
+        },
+        {
+          "name": "ai-team-otel-collector-1",
+          "memory": "44.41MiB / 128MiB",
+          "cpu": "0.11%"
+        },
+        {
+          "name": "ai-team-postgres-1",
+          "memory": "128.3MiB / 512MiB",
+          "cpu": "21.20%"
+        },
+        {
+          "name": "ai-team-op-cron-1",
+          "memory": "1004KiB / 256MiB",
+          "cpu": "0.00%"
+        },
+        {
+          "name": "ai-team-openproject-1",
+          "memory": "1.442GiB / 1.5GiB",
+          "cpu": "110.14%"
+        },
+        {
+          "name": "ai-team-op-worker-1",
+          "memory": "764.1MiB / 1.5GiB",
+          "cpu": "0.62%"
+        },
+        {
+          "name": "ai-team-bookstack-1",
+          "memory": "82.78MiB / 512MiB",
+          "cpu": "0.24%"
+        },
+        {
+          "name": "ai-team-bookstack-db-1",
+          "memory": "156MiB / 384MiB",
+          "cpu": "0.04%"
+        },
+        {
+          "name": "ai-team-cache-1",
+          "memory": "18.82MiB / 96MiB",
+          "cpu": "1.14%"
+        },
+        {
+          "name": "ai-team-hocuspocus-1",
+          "memory": "141.6MiB / 256MiB",
+          "cpu": "0.26%"
+        }
+      ],
+      "observer_mib": 451.61,
+      "installation_mib": 3659.06
+    },
+    {
+      "phase": "mock-workload",
+      "containers": [
+        {
+          "name": "ai-team-stage4-mock",
+          "memory": "91.56MiB / 512MiB",
+          "cpu": "71.95%"
+        },
+        {
+          "name": "ai-team-stage4-git-mock",
+          "memory": "39.02MiB / 256MiB",
+          "cpu": "0.21%"
+        },
+        {
+          "name": "ai-team-api-1",
+          "memory": "116.2MiB / 512MiB",
+          "cpu": "6.19%"
+        },
+        {
+          "name": "ai-team-ui-1",
+          "memory": "108.9MiB / 512MiB",
+          "cpu": "0.90%"
+        },
+        {
+          "name": "ai-team-git-broker-1",
+          "memory": "37.05MiB / 256MiB",
+          "cpu": "18.26%"
+        },
+        {
+          "name": "ai-team-sandbox-1",
+          "memory": "46.81MiB / 256MiB",
+          "cpu": "0.23%"
+        },
+        {
+          "name": "ai-team-grafana-1",
+          "memory": "241.8MiB / 256MiB",
+          "cpu": "3.92%"
+        },
+        {
+          "name": "ai-team-loki-1",
+          "memory": "88.22MiB / 384MiB",
+          "cpu": "1.41%"
+        },
+        {
+          "name": "ai-team-tempo-1",
+          "memory": "42.95MiB / 256MiB",
+          "cpu": "0.44%"
+        },
+        {
+          "name": "ai-team-prometheus-1",
+          "memory": "34.38MiB / 192MiB",
+          "cpu": "0.22%"
+        },
+        {
+          "name": "ai-team-otel-collector-1",
+          "memory": "44.81MiB / 128MiB",
+          "cpu": "0.08%"
+        },
+        {
+          "name": "ai-team-postgres-1",
+          "memory": "128.4MiB / 512MiB",
+          "cpu": "26.98%"
+        },
+        {
+          "name": "ai-team-op-cron-1",
+          "memory": "1004KiB / 256MiB",
+          "cpu": "0.00%"
+        },
+        {
+          "name": "ai-team-openproject-1",
+          "memory": "1.443GiB / 1.5GiB",
+          "cpu": "104.41%"
+        },
+        {
+          "name": "ai-team-op-worker-1",
+          "memory": "764.1MiB / 1.5GiB",
+          "cpu": "0.80%"
+        },
+        {
+          "name": "ai-team-bookstack-1",
+          "memory": "82.83MiB / 512MiB",
+          "cpu": "0.09%"
+        },
+        {
+          "name": "ai-team-bookstack-db-1",
+          "memory": "156MiB / 384MiB",
+          "cpu": "0.15%"
+        },
+        {
+          "name": "ai-team-cache-1",
+          "memory": "18.82MiB / 96MiB",
+          "cpu": "0.77%"
+        },
+        {
+          "name": "ai-team-hocuspocus-1",
+          "memory": "141.6MiB / 256MiB",
+          "cpu": "0.59%"
+        }
+      ],
+      "observer_mib": 452.16,
+      "installation_mib": 3662.06
+    },
+    {
+      "phase": "mock-workload",
+      "containers": [
+        {
+          "name": "ai-team-stage4-mock",
+          "memory": "94.34MiB / 512MiB",
+          "cpu": "1.13%"
+        },
+        {
+          "name": "ai-team-stage4-git-mock",
+          "memory": "39.02MiB / 256MiB",
+          "cpu": "0.21%"
+        },
+        {
+          "name": "ai-team-api-1",
+          "memory": "117.1MiB / 512MiB",
+          "cpu": "6.09%"
+        },
+        {
+          "name": "ai-team-ui-1",
+          "memory": "109.2MiB / 512MiB",
+          "cpu": "0.66%"
+        },
+        {
+          "name": "ai-team-git-broker-1",
+          "memory": "37.05MiB / 256MiB",
+          "cpu": "26.99%"
+        },
+        {
+          "name": "ai-team-sandbox-1",
+          "memory": "46.81MiB / 256MiB",
+          "cpu": "0.14%"
+        },
+        {
+          "name": "ai-team-grafana-1",
+          "memory": "243MiB / 256MiB",
+          "cpu": "1.17%"
+        },
+        {
+          "name": "ai-team-loki-1",
+          "memory": "90.19MiB / 384MiB",
+          "cpu": "0.68%"
+        },
+        {
+          "name": "ai-team-tempo-1",
+          "memory": "43.79MiB / 256MiB",
+          "cpu": "0.28%"
+        },
+        {
+          "name": "ai-team-prometheus-1",
+          "memory": "34.7MiB / 192MiB",
+          "cpu": "0.24%"
+        },
+        {
+          "name": "ai-team-otel-collector-1",
+          "memory": "45.3MiB / 128MiB",
+          "cpu": "0.05%"
+        },
+        {
+          "name": "ai-team-postgres-1",
+          "memory": "129MiB / 512MiB",
+          "cpu": "19.57%"
+        },
+        {
+          "name": "ai-team-op-cron-1",
+          "memory": "1004KiB / 256MiB",
+          "cpu": "0.00%"
+        },
+        {
+          "name": "ai-team-openproject-1",
+          "memory": "1.442GiB / 1.5GiB",
+          "cpu": "102.45%"
+        },
+        {
+          "name": "ai-team-op-worker-1",
+          "memory": "764.1MiB / 1.5GiB",
+          "cpu": "14.33%"
+        },
+        {
+          "name": "ai-team-bookstack-1",
+          "memory": "82.84MiB / 512MiB",
+          "cpu": "0.05%"
+        },
+        {
+          "name": "ai-team-bookstack-db-1",
+          "memory": "156MiB / 384MiB",
+          "cpu": "0.01%"
+        },
+        {
+          "name": "ai-team-cache-1",
+          "memory": "18.82MiB / 96MiB",
+          "cpu": "0.50%"
+        },
+        {
+          "name": "ai-team-hocuspocus-1",
+          "memory": "141.6MiB / 256MiB",
+          "cpu": "0.08%"
+        }
+      ],
+      "observer_mib": 456.98,
+      "installation_mib": 3670.45
+    },
+    {
+      "phase": "mock-workload",
+      "containers": [
+        {
+          "name": "ai-team-stage4-mock",
+          "memory": "94.29MiB / 512MiB",
+          "cpu": "7.90%"
+        },
+        {
+          "name": "ai-team-stage4-git-mock",
+          "memory": "39.03MiB / 256MiB",
+          "cpu": "0.27%"
+        },
+        {
+          "name": "ai-team-api-1",
+          "memory": "118MiB / 512MiB",
+          "cpu": "9.63%"
+        },
+        {
+          "name": "ai-team-ui-1",
+          "memory": "108.9MiB / 512MiB",
+          "cpu": "0.65%"
+        },
+        {
+          "name": "ai-team-git-broker-1",
+          "memory": "37.05MiB / 256MiB",
+          "cpu": "26.40%"
+        },
+        {
+          "name": "ai-team-sandbox-1",
+          "memory": "46.81MiB / 256MiB",
+          "cpu": "0.46%"
+        },
+        {
+          "name": "ai-team-grafana-1",
+          "memory": "246.2MiB / 256MiB",
+          "cpu": "1.30%"
+        },
+        {
+          "name": "ai-team-loki-1",
+          "memory": "91.37MiB / 384MiB",
+          "cpu": "1.26%"
+        },
+        {
+          "name": "ai-team-tempo-1",
+          "memory": "44.62MiB / 256MiB",
+          "cpu": "0.76%"
+        },
+        {
+          "name": "ai-team-prometheus-1",
+          "memory": "34.89MiB / 192MiB",
+          "cpu": "0.70%"
+        },
+        {
+          "name": "ai-team-otel-collector-1",
+          "memory": "45.73MiB / 128MiB",
+          "cpu": "0.81%"
+        },
+        {
+          "name": "ai-team-postgres-1",
+          "memory": "143.8MiB / 512MiB",
+          "cpu": "41.72%"
+        },
+        {
+          "name": "ai-team-op-cron-1",
+          "memory": "1004KiB / 256MiB",
+          "cpu": "0.00%"
+        },
+        {
+          "name": "ai-team-openproject-1",
+          "memory": "1.442GiB / 1.5GiB",
+          "cpu": "103.11%"
+        },
+        {
+          "name": "ai-team-op-worker-1",
+          "memory": "764.1MiB / 1.5GiB",
+          "cpu": "15.25%"
+        },
+        {
+          "name": "ai-team-bookstack-1",
+          "memory": "82.84MiB / 512MiB",
+          "cpu": "0.05%"
+        },
+        {
+          "name": "ai-team-bookstack-db-1",
+          "memory": "156MiB / 384MiB",
+          "cpu": "0.02%"
+        },
+        {
+          "name": "ai-team-cache-1",
+          "memory": "18.82MiB / 96MiB",
+          "cpu": "0.76%"
+        },
+        {
+          "name": "ai-team-hocuspocus-1",
+          "memory": "141.6MiB / 256MiB",
+          "cpu": "0.24%"
+        }
+      ],
+      "observer_mib": 462.81,
+      "installation_mib": 3691.64
+    },
+    {
+      "phase": "mock-workload",
+      "containers": [
+        {
+          "name": "ai-team-stage4-mock",
+          "memory": "95.21MiB / 512MiB",
+          "cpu": "44.51%"
+        },
+        {
+          "name": "ai-team-stage4-git-mock",
+          "memory": "39.03MiB / 256MiB",
+          "cpu": "0.27%"
+        },
+        {
+          "name": "ai-team-api-1",
+          "memory": "118.1MiB / 512MiB",
+          "cpu": "6.29%"
+        },
+        {
+          "name": "ai-team-ui-1",
+          "memory": "108.9MiB / 512MiB",
+          "cpu": "0.51%"
+        },
+        {
+          "name": "ai-team-git-broker-1",
+          "memory": "37.05MiB / 256MiB",
+          "cpu": "0.19%"
+        },
+        {
+          "name": "ai-team-sandbox-1",
+          "memory": "46.81MiB / 256MiB",
+          "cpu": "0.25%"
+        },
+        {
+          "name": "ai-team-grafana-1",
+          "memory": "238.8MiB / 256MiB",
+          "cpu": "5.36%"
+        },
+        {
+          "name": "ai-team-loki-1",
+          "memory": "91.55MiB / 384MiB",
+          "cpu": "0.79%"
+        },
+        {
+          "name": "ai-team-tempo-1",
+          "memory": "43.25MiB / 256MiB",
+          "cpu": "3.84%"
+        },
+        {
+          "name": "ai-team-prometheus-1",
+          "memory": "35.66MiB / 192MiB",
+          "cpu": "0.34%"
+        },
+        {
+          "name": "ai-team-otel-collector-1",
+          "memory": "46.79MiB / 128MiB",
+          "cpu": "0.12%"
+        },
+        {
+          "name": "ai-team-postgres-1",
+          "memory": "129.7MiB / 512MiB",
+          "cpu": "47.99%"
+        },
+        {
+          "name": "ai-team-op-cron-1",
+          "memory": "1004KiB / 256MiB",
+          "cpu": "0.00%"
+        },
+        {
+          "name": "ai-team-openproject-1",
+          "memory": "1.442GiB / 1.5GiB",
+          "cpu": "104.01%"
+        },
+        {
+          "name": "ai-team-op-worker-1",
+          "memory": "764.1MiB / 1.5GiB",
+          "cpu": "13.36%"
+        },
+        {
+          "name": "ai-team-bookstack-1",
+          "memory": "82.73MiB / 512MiB",
+          "cpu": "0.02%"
+        },
+        {
+          "name": "ai-team-bookstack-db-1",
+          "memory": "156.1MiB / 384MiB",
+          "cpu": "3.51%"
+        },
+        {
+          "name": "ai-team-cache-1",
+          "memory": "18.82MiB / 96MiB",
+          "cpu": "0.75%"
+        },
+        {
+          "name": "ai-team-hocuspocus-1",
+          "memory": "141.6MiB / 256MiB",
+          "cpu": "0.09%"
+        }
+      ],
+      "observer_mib": 456.05,
+      "installation_mib": 3671.79
+    },
+    {
+      "phase": "mock-workload",
+      "containers": [
+        {
+          "name": "ai-team-stage4-mock",
+          "memory": "95.27MiB / 512MiB",
+          "cpu": "6.82%"
+        },
+        {
+          "name": "ai-team-stage4-git-mock",
+          "memory": "39.27MiB / 256MiB",
+          "cpu": "0.25%"
+        },
+        {
+          "name": "ai-team-api-1",
+          "memory": "118.3MiB / 512MiB",
+          "cpu": "13.65%"
+        },
+        {
+          "name": "ai-team-ui-1",
+          "memory": "108.8MiB / 512MiB",
+          "cpu": "0.62%"
+        },
+        {
+          "name": "ai-team-git-broker-1",
+          "memory": "37.05MiB / 256MiB",
+          "cpu": "21.62%"
+        },
+        {
+          "name": "ai-team-sandbox-1",
+          "memory": "46.81MiB / 256MiB",
+          "cpu": "0.21%"
+        },
+        {
+          "name": "ai-team-grafana-1",
+          "memory": "247.7MiB / 256MiB",
+          "cpu": "2.23%"
+        },
+        {
+          "name": "ai-team-loki-1",
+          "memory": "91.56MiB / 384MiB",
+          "cpu": "0.93%"
+        },
+        {
+          "name": "ai-team-tempo-1",
+          "memory": "43.33MiB / 256MiB",
+          "cpu": "0.41%"
+        },
+        {
+          "name": "ai-team-prometheus-1",
+          "memory": "36.26MiB / 192MiB",
+          "cpu": "2.27%"
+        },
+        {
+          "name": "ai-team-otel-collector-1",
+          "memory": "46.86MiB / 128MiB",
+          "cpu": "0.09%"
+        },
+        {
+          "name": "ai-team-postgres-1",
+          "memory": "133.3MiB / 512MiB",
+          "cpu": "63.38%"
+        },
+        {
+          "name": "ai-team-op-cron-1",
+          "memory": "1004KiB / 256MiB",
+          "cpu": "0.00%"
+        },
+        {
+          "name": "ai-team-openproject-1",
+          "memory": "1.442GiB / 1.5GiB",
+          "cpu": "99.55%"
+        },
+        {
+          "name": "ai-team-op-worker-1",
+          "memory": "764.1MiB / 1.5GiB",
+          "cpu": "9.14%"
+        },
+        {
+          "name": "ai-team-bookstack-1",
+          "memory": "82.73MiB / 512MiB",
+          "cpu": "0.01%"
+        },
+        {
+          "name": "ai-team-bookstack-db-1",
+          "memory": "156.1MiB / 384MiB",
+          "cpu": "3.41%"
+        },
+        {
+          "name": "ai-team-cache-1",
+          "memory": "18.82MiB / 96MiB",
+          "cpu": "0.68%"
+        },
+        {
+          "name": "ai-team-hocuspocus-1",
+          "memory": "141.6MiB / 256MiB",
+          "cpu": "0.06%"
+        }
+      ],
+      "observer_mib": 465.71,
+      "installation_mib": 3685.45
+    },
+    {
+      "phase": "mock-workload",
+      "containers": [
+        {
+          "name": "ai-team-stage4-mock",
+          "memory": "95.3MiB / 512MiB",
+          "cpu": "19.33%"
+        },
+        {
+          "name": "ai-team-stage4-git-mock",
+          "memory": "39.27MiB / 256MiB",
+          "cpu": "0.22%"
+        },
+        {
+          "name": "ai-team-api-1",
+          "memory": "119.8MiB / 512MiB",
+          "cpu": "8.04%"
+        },
+        {
+          "name": "ai-team-ui-1",
+          "memory": "108.9MiB / 512MiB",
+          "cpu": "0.84%"
+        },
+        {
+          "name": "ai-team-git-broker-1",
+          "memory": "37.05MiB / 256MiB",
+          "cpu": "27.30%"
+        },
+        {
+          "name": "ai-team-sandbox-1",
+          "memory": "46.82MiB / 256MiB",
+          "cpu": "2.49%"
+        },
+        {
+          "name": "ai-team-grafana-1",
+          "memory": "250.1MiB / 256MiB",
+          "cpu": "2.26%"
+        },
+        {
+          "name": "ai-team-loki-1",
+          "memory": "91.57MiB / 384MiB",
+          "cpu": "2.57%"
+        },
+        {
+          "name": "ai-team-tempo-1",
+          "memory": "43.37MiB / 256MiB",
+          "cpu": "2.96%"
+        },
+        {
+          "name": "ai-team-prometheus-1",
+          "memory": "36.34MiB / 192MiB",
+          "cpu": "0.71%"
+        },
+        {
+          "name": "ai-team-otel-collector-1",
+          "memory": "46.93MiB / 128MiB",
+          "cpu": "0.91%"
+        },
+        {
+          "name": "ai-team-postgres-1",
+          "memory": "132.1MiB / 512MiB",
+          "cpu": "45.12%"
+        },
+        {
+          "name": "ai-team-op-cron-1",
+          "memory": "1004KiB / 256MiB",
+          "cpu": "0.00%"
+        },
+        {
+          "name": "ai-team-openproject-1",
+          "memory": "1.442GiB / 1.5GiB",
+          "cpu": "100.48%"
+        },
+        {
+          "name": "ai-team-op-worker-1",
+          "memory": "764.1MiB / 1.5GiB",
+          "cpu": "10.67%"
+        },
+        {
+          "name": "ai-team-bookstack-1",
+          "memory": "82.73MiB / 512MiB",
+          "cpu": "0.20%"
+        },
+        {
+          "name": "ai-team-bookstack-db-1",
+          "memory": "156.1MiB / 384MiB",
+          "cpu": "5.71%"
+        },
+        {
+          "name": "ai-team-cache-1",
+          "memory": "19.07MiB / 96MiB",
+          "cpu": "1.36%"
+        },
+        {
+          "name": "ai-team-hocuspocus-1",
+          "memory": "142.4MiB / 256MiB",
+          "cpu": "2.50%"
+        }
+      ],
+      "observer_mib": 468.31,
+      "installation_mib": 3689.54
+    },
+    {
+      "phase": "mock-workload",
+      "containers": [
+        {
+          "name": "ai-team-stage4-mock",
+          "memory": "95.3MiB / 512MiB",
+          "cpu": "0.63%"
+        },
+        {
+          "name": "ai-team-stage4-git-mock",
+          "memory": "39.36MiB / 256MiB",
+          "cpu": "0.13%"
+        },
+        {
+          "name": "ai-team-api-1",
+          "memory": "119.9MiB / 512MiB",
+          "cpu": "3.73%"
+        },
+        {
+          "name": "ai-team-ui-1",
+          "memory": "108.9MiB / 512MiB",
+          "cpu": "0.40%"
+        },
+        {
+          "name": "ai-team-git-broker-1",
+          "memory": "37.08MiB / 256MiB",
+          "cpu": "23.59%"
+        },
+        {
+          "name": "ai-team-sandbox-1",
+          "memory": "46.82MiB / 256MiB",
+          "cpu": "0.12%"
+        },
+        {
+          "name": "ai-team-grafana-1",
+          "memory": "245.2MiB / 256MiB",
+          "cpu": "4.93%"
+        },
+        {
+          "name": "ai-team-loki-1",
+          "memory": "91.62MiB / 384MiB",
+          "cpu": "0.78%"
+        },
+        {
+          "name": "ai-team-tempo-1",
+          "memory": "43.52MiB / 256MiB",
+          "cpu": "0.84%"
+        },
+        {
+          "name": "ai-team-prometheus-1",
+          "memory": "36.93MiB / 192MiB",
+          "cpu": "0.21%"
+        },
+        {
+          "name": "ai-team-otel-collector-1",
+          "memory": "47.02MiB / 128MiB",
+          "cpu": "0.06%"
+        },
+        {
+          "name": "ai-team-postgres-1",
+          "memory": "130MiB / 512MiB",
+          "cpu": "26.47%"
+        },
+        {
+          "name": "ai-team-op-cron-1",
+          "memory": "1004KiB / 256MiB",
+          "cpu": "0.00%"
+        },
+        {
+          "name": "ai-team-openproject-1",
+          "memory": "1.442GiB / 1.5GiB",
+          "cpu": "102.35%"
+        },
+        {
+          "name": "ai-team-op-worker-1",
+          "memory": "764.1MiB / 1.5GiB",
+          "cpu": "0.63%"
+        },
+        {
+          "name": "ai-team-bookstack-1",
+          "memory": "82.73MiB / 512MiB",
+          "cpu": "0.02%"
+        },
+        {
+          "name": "ai-team-bookstack-db-1",
+          "memory": "156.1MiB / 384MiB",
+          "cpu": "0.01%"
+        },
+        {
+          "name": "ai-team-cache-1",
+          "memory": "18.82MiB / 96MiB",
+          "cpu": "0.60%"
+        },
+        {
+          "name": "ai-team-hocuspocus-1",
+          "memory": "142.4MiB / 256MiB",
+          "cpu": "0.07%"
+        }
+      ],
+      "observer_mib": 464.29,
+      "installation_mib": 3683.39
+    },
+    {
+      "phase": "mock-workload",
+      "containers": [
+        {
+          "name": "ai-team-stage4-mock",
+          "memory": "64.93MiB / 512MiB",
+          "cpu": "88.55%"
+        },
+        {
+          "name": "ai-team-stage4-git-mock",
+          "memory": "38.52MiB / 256MiB",
+          "cpu": "0.29%"
+        },
+        {
+          "name": "ai-team-api-1",
+          "memory": "121MiB / 512MiB",
+          "cpu": "0.79%"
+        },
+        {
+          "name": "ai-team-ui-1",
+          "memory": "109MiB / 512MiB",
+          "cpu": "0.91%"
+        },
+        {
+          "name": "ai-team-git-broker-1",
+          "memory": "48.28MiB / 256MiB",
+          "cpu": "21.95%"
+        },
+        {
+          "name": "ai-team-sandbox-1",
+          "memory": "46.82MiB / 256MiB",
+          "cpu": "0.33%"
+        },
+        {
+          "name": "ai-team-grafana-1",
+          "memory": "246.7MiB / 256MiB",
+          "cpu": "38.55%"
+        },
+        {
+          "name": "ai-team-loki-1",
+          "memory": "92.34MiB / 384MiB",
+          "cpu": "1.43%"
+        },
+        {
+          "name": "ai-team-tempo-1",
+          "memory": "44.14MiB / 256MiB",
+          "cpu": "0.95%"
+        },
+        {
+          "name": "ai-team-prometheus-1",
+          "memory": "33.74MiB / 192MiB",
+          "cpu": "5.38%"
+        },
+        {
+          "name": "ai-team-otel-collector-1",
+          "memory": "47.07MiB / 128MiB",
+          "cpu": "0.12%"
+        },
+        {
+          "name": "ai-team-postgres-1",
+          "memory": "132.5MiB / 512MiB",
+          "cpu": "38.81%"
+        },
+        {
+          "name": "ai-team-op-cron-1",
+          "memory": "1004KiB / 256MiB",
+          "cpu": "0.00%"
+        },
+        {
+          "name": "ai-team-openproject-1",
+          "memory": "1.442GiB / 1.5GiB",
+          "cpu": "102.29%"
+        },
+        {
+          "name": "ai-team-op-worker-1",
+          "memory": "764.1MiB / 1.5GiB",
+          "cpu": "4.25%"
+        },
+        {
+          "name": "ai-team-bookstack-1",
+          "memory": "82.75MiB / 512MiB",
+          "cpu": "0.05%"
+        },
+        {
+          "name": "ai-team-bookstack-db-1",
+          "memory": "156.1MiB / 384MiB",
+          "cpu": "0.01%"
+        },
+        {
+          "name": "ai-team-cache-1",
+          "memory": "18.82MiB / 96MiB",
+          "cpu": "0.70%"
+        },
+        {
+          "name": "ai-team-hocuspocus-1",
+          "memory": "142.4MiB / 256MiB",
+          "cpu": "0.60%"
+        }
+      ],
+      "observer_mib": 463.99,
+      "installation_mib": 3666.8
+    },
+    {
+      "phase": "profile-on-final",
+      "containers": [
+        {
+          "name": "ai-team-api-1",
+          "memory": "124.2MiB / 512MiB",
+          "cpu": "3.27%"
+        },
+        {
+          "name": "ai-team-worker-1",
+          "memory": "70.97MiB / 512MiB",
+          "cpu": "67.33%"
+        },
+        {
+          "name": "ai-team-ui-1",
+          "memory": "109.7MiB / 512MiB",
+          "cpu": "0.81%"
+        },
+        {
+          "name": "ai-team-git-broker-1",
+          "memory": "37.05MiB / 256MiB",
+          "cpu": "0.20%"
+        },
+        {
+          "name": "ai-team-sandbox-1",
+          "memory": "46.82MiB / 256MiB",
+          "cpu": "0.16%"
+        },
+        {
+          "name": "ai-team-grafana-1",
+          "memory": "240.7MiB / 256MiB",
+          "cpu": "1.40%"
+        },
+        {
+          "name": "ai-team-loki-1",
+          "memory": "103.5MiB / 384MiB",
+          "cpu": "0.74%"
+        },
+        {
+          "name": "ai-team-tempo-1",
+          "memory": "62.21MiB / 256MiB",
+          "cpu": "0.34%"
+        },
+        {
+          "name": "ai-team-prometheus-1",
+          "memory": "37.33MiB / 192MiB",
+          "cpu": "0.90%"
+        },
+        {
+          "name": "ai-team-otel-collector-1",
+          "memory": "123.7MiB / 128MiB",
+          "cpu": "1.36%"
+        },
+        {
+          "name": "ai-team-postgres-1",
+          "memory": "127.1MiB / 512MiB",
+          "cpu": "33.30%"
+        },
+        {
+          "name": "ai-team-op-cron-1",
+          "memory": "1004KiB / 256MiB",
+          "cpu": "0.00%"
+        },
+        {
+          "name": "ai-team-openproject-1",
+          "memory": "1.442GiB / 1.5GiB",
+          "cpu": "103.81%"
+        },
+        {
+          "name": "ai-team-op-worker-1",
+          "memory": "764.1MiB / 1.5GiB",
+          "cpu": "0.21%"
+        },
+        {
+          "name": "ai-team-bookstack-1",
+          "memory": "82.75MiB / 512MiB",
+          "cpu": "0.07%"
+        },
+        {
+          "name": "ai-team-bookstack-db-1",
+          "memory": "156.1MiB / 384MiB",
+          "cpu": "0.02%"
+        },
+        {
+          "name": "ai-team-cache-1",
+          "memory": "18.82MiB / 96MiB",
+          "cpu": "0.83%"
+        },
+        {
+          "name": "ai-team-hocuspocus-1",
+          "memory": "142.4MiB / 256MiB",
+          "cpu": "0.33%"
+        }
+      ],
+      "observer_mib": 567.44,
+      "installation_mib": 3725.04
+    }
+  ],
+  "limits_mib": 1216,
+  "notes": "Docker working-set RAM. Worker paused for profile-off/idle; two test containers during workload; normal worker restored in final. Installation totals include tracker/knowledge databases. No disk-quota claim."
+}

@@ -2,7 +2,7 @@
   "uid": "ai-team-operations",
   "title": "AI Team · Delivery operations",
   "schemaVersion": 41,
-  "version": 1,
+  "version": 2,
   "editable": false,
   "timezone": "browser",
   "refresh": "15s",
@@ -270,7 +270,9 @@
         {
           "refId": "A",
           "expr": "topk(10,ai_team_story_budget_ratio{story_id=~\"$story_id\",backend=~\"$backend\"})",
-          "legendFormat": "{{story_id}} / {{dimension}}"
+          "legendFormat": "{{story_id}} / {{dimension}}",
+          "instant": true,
+          "range": false
         }
       ],
       "fieldConfig": {
