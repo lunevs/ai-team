@@ -83,8 +83,10 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
         if stopped:
             card['current'] = {'BLOCKED': 'Работа заблокирована', 'FAILED': 'Требуется внимание',
                                'CANCELLED': 'История отменена'}[story['status']]
-        elif execution.get('status') in ['ACCEPTANCE','BUSINESS_ACCEPTED'] and card['remaining']:
+        elif execution.get('status') in ['ACCEPTANCE','BUSINESS_ACCEPTED','RELEASE_REVIEW','FINALIZING_RELEASE'] and card['remaining']:
             card['current']='Ожидает ревью и приёмки'
+        elif execution.get('status')=='WAITING_GITHUB' and card['remaining']:
+            card['current']='Ожидает публикации PR'
         elif card['current'] == 'Нет активной задачи' and card['remaining']:
             card['current'] = ('Ожидает одобрения спецификации' if story.get('approved') else 'Ожидает одобрения плана') if story['status'] == 'PLAN_REVIEW' else 'Задачи в очереди'
     return {'agents': list(cards.values()), 'tracker_available': tracker_available,

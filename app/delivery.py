@@ -13,12 +13,13 @@ from app.reports import create_workbook,monthly,STYLE
 ARTIFACT_FILES={'report.xlsx','query.sql','qa.json','review.json','financial.json','style.md','architecture.md','acceptance.md','dashboard.py'}
 
 def broker(path,payload=None):
-    if path not in ['/ready','/publish','/gate']:raise ValueError('Broker route outside policy')
+    if path not in ['/ready','/publish','/gate','/release','/finalize-release']:raise ValueError('Broker route outside policy')
     try:
         with httpx.Client(timeout=180) as client:
             response=client.request('GET' if payload is None else 'POST',os.getenv('GIT_BROKER_URL','http://git-broker:8000')+path,
                 headers={'Authorization':'Bearer '+os.getenv('GIT_BROKER_API_TOKEN','')},json=payload)
     except httpx.TransportError:raise RetryableIntegrationError('Git broker unavailable') from None
+    if response.status_code==409 and path=='/finalize-release':return {'pending':True}
     if response.status_code>=400:raise RetryableIntegrationError('Git broker HTTP '+str(response.status_code))
     return response.json()
 
@@ -32,10 +33,34 @@ def complete_acceptance(story,record):
     tracker.honor_remote_stop(story['id'])
     gate=broker('/gate',{'pulls':record['git']['pulls']})
     if not gate['eligible']:raise db.Conflict('Git gate changed after business acceptance')
+    releases=[]
+    for epic_id in sorted({p['epic_id'] for p in record['git']['pulls']}):
+        tracker.honor_remote_stop(story['id'])
+        releases.append(broker('/release',{'epic_id':epic_id,'pulls':[p for p in record['git']['pulls'] if p['epic_id']==epic_id]}))
+    update(record['id'],status='RELEASE_REVIEW',git=record['git']|{'releases':releases})
+    event(story,'execution.release_requested',{'releases':releases},f"{record['id']}:release-requested")
+
+def finalize_delivery(story,record):
+    from app.execution import update,event
+    tracker.honor_remote_stop(story['id'])
+    tags=[]
+    for release in record['git']['releases']:
+        tracker.honor_remote_stop(story['id'])
+        result=broker('/finalize-release',{'epic_id':release['epic_id'],'number':release['number'],'commit':release['commit']})
+        if result.get('pending'):
+            update(record['id'],status='RELEASE_REVIEW')
+            event(story,'execution.release_waiting',{'epic_id':release['epic_id']});return
+        tags.append(result)
+    record=record|{'git':record['git']|{'tags':tags}}
+    update(record['id'],git=record['git'])
     for pull in record['git']['pulls']:
         tracker.honor_remote_stop(story['id'])
         item=tracker.request('/api/v3/work_packages/'+str(pull['task_id']))
         tracker.request('/api/v3/work_packages/'+str(pull['task_id']),'PATCH',{'lockVersion':item['lockVersion'],
+            '_links':{'status':{'href':'/api/v3/statuses/'+str(settings.status_ids['DONE'])}}})
+    for epic_id in sorted({p['epic_id'] for p in record['git']['pulls']}):
+        item=tracker.request('/api/v3/work_packages/'+str(epic_id))
+        tracker.request('/api/v3/work_packages/'+str(epic_id),'PATCH',{'lockVersion':item['lockVersion'],
             '_links':{'status':{'href':'/api/v3/statuses/'+str(settings.status_ids['DONE'])}}})
     knowledge.ensure_page(story['id'],f"r{story['revision']}:acceptance",'Приёмка результата',
         '# Приёмка\n\nЗаказчик: '+record['business_accepted_by']+'\nДата: '+record['business_accepted_at'].isoformat()+
@@ -65,10 +90,17 @@ def prepare_and_publish(story,record):
            'architecture.md':architecture,
            'acceptance.md':'# Приёмка\n\nПроверить QA, независимое GitHub review, CI и слияние всех задач. Затем заказчик подтверждает результат в UI.\n',
            'dashboard.py':'# Declarative dashboard specification; generated Python is never executed.\nMETRICS = '+repr(['balance','dpd30_balance','dpd90_balance','npl90_ratio','interest_income'])+'\nGRAIN = ("month", "product_id", "region")\n'}
-    for name,content in files.items():(root/name).write_text(content)
-    create_workbook(record['rows'],metadata,root/'report.xlsx')
-    artifacts={name:{'url':f"/stories/{story['id']}/execution/artifacts/{name}",'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
-                     'size':path.stat().st_size} for name in ARTIFACT_FILES if (path:=root/name).exists()}
+    if record['artifacts']:
+        artifacts=record['artifacts']
+        for name,manifest in artifacts.items():
+            path=artifact_path(record['id'],name)
+            if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest()!=manifest['sha256']:
+                raise db.Conflict('Previously verified artifact is missing or changed')
+    else:
+        for name,content in files.items():(root/name).write_text(content)
+        create_workbook(record['rows'],metadata,root/'report.xlsx')
+        artifacts={name:{'url':f"/stories/{story['id']}/execution/artifacts/{name}",'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
+                         'size':path.stat().st_size} for name in ARTIFACT_FILES if (path:=root/name).exists()}
     update(record['id'],artifacts=artifacts)
     for role in ['designer','financial_analyst','application_developer','qa']:
         event(story,'delivery.artifact',{'role':role,'backend':'deterministic','run_id':str(record['id'])},f"{record['id']}:artifact:{role}")
@@ -76,8 +108,9 @@ def prepare_and_publish(story,record):
         '# Результат\n\n'+json.dumps(metadata,ensure_ascii=False,indent=2)+'\n\n## QA\n'+files['qa.json']+
         '\n\n## Архитектурное ревью\n'+files['review.json']+'\n\n## Финансовые показатели\n'+files['financial.json']+
         '\n\nАртефакты доступны в защищённом UI. Приёмка требует CI, независимого review и слияния PR; готовый отчёт сам по себе не закрывает задачу.')
-    if not broker('/ready')['configured']:
-        update(record['id'],status='WAITING_GITHUB',git={'configured':False,'documentation_url':doc})
+    readiness=broker('/ready')
+    if not readiness['configured'] or not readiness.get('base_ready',True):
+        update(record['id'],status='WAITING_GITHUB',git=readiness|{'documentation_url':doc})
         event(story,'execution.waiting_github',{},f"{record['id']}:waiting-github");return
     role_files={'pm':['acceptance.md'],'system_analyst':['architecture.md','review.json'],
                 'financial_analyst':['financial.json','report.xlsx'],'data_developer':['query.sql'],

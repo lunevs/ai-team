@@ -1,0 +1,104 @@
+{
+  "backend": "openrouter",
+  "story_id": "379f6486-4111-404e-a7fb-3272f1ef9d22",
+  "work_package_id": 219,
+  "execution_status": "WAITING_GITHUB",
+  "attempt": 3,
+  "usage": {
+    "calls": 8,
+    "tokens": 30072,
+    "estimated_cost_usd": 0.010817503,
+    "estimated_calls": 0,
+    "backends": [
+      "openrouter"
+    ],
+    "models": [
+      "deepseek/deepseek-v4.1-flash"
+    ]
+  },
+  "qa": {
+    "checks": [
+      "independent_source_reference",
+      "unique_month_product_region",
+      "24_slice_grid",
+      "month_end_no_carry",
+      "DPD29_30_89_90",
+      "monthly_income",
+      "zero_denominator_NULL",
+      "empty_slice_NULL",
+      "economic_hierarchy",
+      "NPL_ratio_precision"
+    ],
+    "passed": true,
+    "failures": [],
+    "actual_rows": 24,
+    "expected_rows": 24,
+    "reference_backend": "Python Decimal; independent of generated SQL"
+  },
+  "review": {
+    "approved": true,
+    "findings": [
+      "SQL соответствует контракту: сетка month × product_id × region строится через CROSS JOIN, что даёт полный набор срезов, а LEFT JOIN сохраняет пустые срезы как NULL.",
+      "Снимки балансов берутся строго на последний календарный день месяца (is_month_end, fld.date = me.snapshot_date) без переноса остатков вперёд.",
+      "Пороги DPD применены корректно: dpd >= 30 для dpd30_balance и dpd >= 90 для dpd90_balance, что соответствует npl_definition = dpd >= 90.",
+      "Процентный доход агрегируется по календарному месяцу (GROUP BY c.month) из fact_loan_daily, без двойного счёта на уровне снимков.",
+      "Отсутствующие срезы дают NULL, а не ноль: LEFT JOIN не подменяет отсутствие нулевыми значениями.",
+      "Правило нулевого знаменателя реализовано верно: при balance = 0 или NULL коэффициент npl90_ratio возвращает NULL.",
+      "Округление соответствует паспорту: деньги до 2 знаков, коэффициент до 6 знаков.",
+      "Двойного счёта нет: балансы агрегируются из fact_loan_daily на дату снимка, доход — отдельно по месяцам, соединение по month/product_id/region.",
+      "QA подтверждает 24 строки и отсутствие ошибок, включая проверки DPD29_30_89_90, zero_denominator_NULL, empty_slice_NULL и NPL_ratio_precision."
+    ]
+  },
+  "artifacts": {
+    "qa.json": {
+      "url": "/stories/379f6486-4111-404e-a7fb-3272f1ef9d22/execution/artifacts/qa.json",
+      "size": 439,
+      "sha256": "69754361142aa6d1f2d3420458444b97b75ac1c61ecb92b5dcb7c5b884560de0"
+    },
+    "style.md": {
+      "url": "/stories/379f6486-4111-404e-a7fb-3272f1ef9d22/execution/artifacts/style.md",
+      "size": 355,
+      "sha256": "703a23dd9c80c257aac850b4a201da93fe140ae74a65aa3e8c96e0e7bb761b1b"
+    },
+    "query.sql": {
+      "url": "/stories/379f6486-4111-404e-a7fb-3272f1ef9d22/execution/artifacts/query.sql",
+      "size": 2223,
+      "sha256": "41e1d1d9e840496db8ef0c904c7244445d23a55f2d32af915bed532e0046be08"
+    },
+    "report.xlsx": {
+      "url": "/stories/379f6486-4111-404e-a7fb-3272f1ef9d22/execution/artifacts/report.xlsx",
+      "size": 7750,
+      "sha256": "be5dffa3b1edba084289e0644165d6a6422e86cbfe191f7c76b9595e0e8c6f79"
+    },
+    "review.json": {
+      "url": "/stories/379f6486-4111-404e-a7fb-3272f1ef9d22/execution/artifacts/review.json",
+      "size": 1895,
+      "sha256": "7055e27bcee64894199b9854e25cbc0e73db2e7268f73c42f56acb1627e5dee0"
+    },
+    "dashboard.py": {
+      "url": "/stories/379f6486-4111-404e-a7fb-3272f1ef9d22/execution/artifacts/dashboard.py",
+      "size": 207,
+      "sha256": "b8f93c86940678e188cde2f99c1217ee377a353f225702eee61f064fbfd09e13"
+    },
+    "acceptance.md": {
+      "url": "/stories/379f6486-4111-404e-a7fb-3272f1ef9d22/execution/artifacts/acceptance.md",
+      "size": 200,
+      "sha256": "f834a7cb697049b6aec9514765cc8444b04bbff51a9f20366a48f4ec8517d331"
+    },
+    "financial.json": {
+      "url": "/stories/379f6486-4111-404e-a7fb-3272f1ef9d22/execution/artifacts/financial.json",
+      "size": 1991,
+      "sha256": "63b72ceba06407e3b58dd745590b21abc93137230f69c0ba59aafc8af29cce4f"
+    },
+    "architecture.md": {
+      "url": "/stories/379f6486-4111-404e-a7fb-3272f1ef9d22/execution/artifacts/architecture.md",
+      "size": 2374,
+      "sha256": "a67af6afd3a987d8f2ee7b0da5f9b0faf168ab310ddd6c3937e3f7a585e41a99"
+    }
+  },
+  "git": {
+    "configured": false,
+    "documentation_url": "http://localhost:8082/books/bank-ai-delivery-team/page/ai-379f6486-4111-404e-a7fb-3272f1ef9d22-r1execution-rascet-qa-i-otcet"
+  },
+  "business_accepted": false
+}

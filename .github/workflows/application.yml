@@ -36,6 +36,8 @@ jobs:
           echo 'APP_RUNTIME_DB_PASSWORD=ephemeral-ci-only' >> .env
           docker compose build migrate
           docker compose run --rm --no-deps migrate
+          python scripts/bootstrap_sandbox.py
+          docker compose up -d --no-deps --wait sandbox
       - name: PostgreSQL integration
         if: steps.source.outputs.available == 'true'
         run: docker compose run --rm --no-deps worker python -m pytest -q tests/integration

@@ -1,0 +1,24 @@
+{
+  "backend": "mock",
+  "checks": [
+    "explicit analytics approval required before SQL",
+    "execution start idempotent",
+    "real sandbox SQL matches independent 24-row QA",
+    "architecture review separate from developer",
+    "authenticated Excel/SQL/QA downloads; unknown filenames denied",
+    "no acceptance before Git review/CI/merge",
+    "criteria cannot change underneath execution",
+    "worker restart/publication retry preserve attempts, LLM usage and artifact hashes",
+    "cancellation prevents publication retry",
+    "DPD threshold defect creates actual tracker bug and is repaired on attempt 2",
+    "hard worker crash after persisted QA resumes without duplicate LLM call or tracker bug",
+    "two repair limit produces three bugs and explicit escalation",
+    "shared story budget blocks developer before fifth call or artifact publication"
+  ],
+  "story_ids": [
+    "887fe95f-23ea-45a8-a435-2c22aff299c2",
+    "e544aaca-c5ca-470e-a6ee-00d7e022e96b",
+    "d5149e89-818b-4e34-914f-47c98283226f",
+    "5b6e238c-267b-4067-ae2b-53192473ec43"
+  ]
+}
