@@ -6,7 +6,7 @@ import httpx
 from psycopg.types.json import Jsonb
 from app.config import settings
 from app import db
-from app.schemas import PMResult, SAResult, SourceSpecification, AnalyticsResult, MetricPassport
+from app.schemas import PMResult, SAResult, SourceSpecification, AnalyticsResult, MetricPassport, SQLArtifact, SQLReview
 from app.observability import tracer,log
 
 class LLMProvider(Protocol):
@@ -71,6 +71,14 @@ class MockProvider:
         context=json.loads(prompt)
         if schema is PMResult:
             result=PMResult(goal='Создать проверяемую витрину анализа кредитного портфеля',acceptance_criteria=['Согласовать метрики и правила агрегации','Проверить расчёты на синтетических данных'],priorities=['Определения метрик','Данные и проверки'],questions=['Как выбирать срез конца месяца?'] if '[уточнить]' in context['story'] and not context['answers'] else [])
+        elif schema is SQLArtifact:
+            from pathlib import Path
+            query=Path(__file__).with_name('templates').joinpath('portfolio.sql').read_text()
+            if '[qa-always-fail]' in context['story'] or '[qa-defect]' in context['story'] and context['attempt']==1:
+                query=query.replace('dpd>=30','dpd>30')
+            result=SQLArtifact(select_sql=query,explanation='Расчёт метрик по календарному month-end и месячному доходу из фиксированных источников.')
+        elif schema is SQLReview:
+            result=SQLReview(approved=True,findings=[])
         elif schema is SourceSpecification:
             result=SourceSpecification(grain='month × product_id × region; январь–июнь 2026',mapping=[
                 {'target':key,'source':'synthetic.fact_loan_daily + fact_loan + dim_customer',

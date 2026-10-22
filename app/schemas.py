@@ -141,3 +141,11 @@ class AnalyticsResult(StrictModel):
     user_stories: list[str] = Field(min_length=1,max_length=6)
     assumptions: list[str] = Field(min_length=1,max_length=8)
     questions: list[str] = Field(default_factory=list,max_length=8)
+
+class SQLArtifact(StrictModel):
+    select_sql:str=Field(min_length=20,max_length=25000)
+    explanation:str=Field(min_length=10,max_length=2000)
+
+class SQLReview(StrictModel):
+    approved:bool
+    findings:list[str]=Field(default_factory=list,max_length=10)

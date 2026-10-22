@@ -90,6 +90,10 @@ def run_story(story_id,saver):
         tracker.set_status(story_id,'CANCELLED')
         return
     tracker.honor_remote_stop(story_id)
+    from app.execution import get_run as get_execution,run as run_execution
+    if get_execution(story_id):
+        run_execution(story_id)
+        return
     from app.analytics import get_run,run as run_analytics
     if get_run(story_id):
         run_analytics(story_id,saver)
