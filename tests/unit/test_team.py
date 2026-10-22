@@ -1,8 +1,8 @@
 from app.team import project_team
 
 
-def projection(remote=None, available=True, status='PLAN_REVIEW'):
-    story={'revision':2,'status':status,'plan':{'epics':[{'tasks':[
+def projection(remote=None, available=True, status='PLAN_REVIEW',approved=False):
+    story={'revision':2,'status':status,'approved':approved,'plan':{'epics':[{'tasks':[
         {'key':'a','title':'Подготовить витрину','role':'data_developer'}]}]}}
     return project_team(story,[{'role':'pm','revision':1},{'role':'pm','revision':2}],{},[],
         [{'key':'r2:task:a','external_id':12,'url':'http://localhost:8080/work_packages/12'}],
@@ -17,6 +17,8 @@ def test_counts_and_history_do_not_treat_a_plan_as_execution():
     assert pm['completed']==1 and len(pm['history'])==2
     assert dev['completed']==0 and dev['remaining']==1
     assert dev['current']=='Ожидает одобрения плана'
+    analytics=projection({'_embedded':{'status':{'name':'New','isClosed':False}}},approved=True)
+    assert next(a for a in analytics['agents'] if a['role']=='data_developer')['current']=='Ожидает одобрения спецификации'
 
 
 def test_tracker_closure_and_outage():

@@ -74,6 +74,6 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
             card['current'] = {'BLOCKED': 'Работа заблокирована', 'FAILED': 'Требуется внимание',
                                'CANCELLED': 'История отменена'}[story['status']]
         elif card['current'] == 'Нет активной задачи' and card['remaining']:
-            card['current'] = 'Ожидает одобрения плана' if story['status'] == 'PLAN_REVIEW' else 'Задачи в очереди'
+            card['current'] = ('Ожидает одобрения спецификации' if story.get('approved') else 'Ожидает одобрения плана') if story['status'] == 'PLAN_REVIEW' else 'Задачи в очереди'
     return {'agents': list(cards.values()), 'tracker_available': tracker_available,
             'scope': 'story', 'revision': story['revision']}
