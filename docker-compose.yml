@@ -261,6 +261,7 @@ services:
       API_URL: http://api:8000
       APP_API_TOKEN: ${APP_API_TOKEN:-}
       STREAMLIT_BROWSER_GATHER_USAGE_STATS: 'false'
+      GRAFANA_PUBLIC_URL: ${GRAFANA_PUBLIC_URL:-}
       HOME: /tmp
     networks: [frontend]
     ports: ['127.0.0.1:8501:8501']
@@ -358,6 +359,7 @@ services:
     mem_limit: 192m
   grafana:
     <<: *observer
+    networks: [observability, observability-ui]
     image: grafana/grafana:13.2.4@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
     user: '472:472'
     entrypoint: [/bin/sh, -ec]
@@ -366,11 +368,14 @@ services:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
       GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      GF_SECURITY_DISABLE_GRAVATAR: 'true'
       GF_USERS_ALLOW_SIGN_UP: 'false'
       GF_ANALYTICS_REPORTING_ENABLED: 'false'
       GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: 'false'
       GF_NEWS_NEWS_FEED_ENABLED: 'false'
+      GF_PLUGINS_PREINSTALL_DISABLED: 'true'
+      GF_PLUGINS_PREINSTALL_AUTO_UPDATE: 'false'
       GF_LOG_LEVEL: error
       GOMEMLIMIT: 192MiB
     volumes:
@@ -378,9 +383,10 @@ services:
       - ./infra/observability/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/ai-team.yaml:ro
       - ./infra/observability/grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/ai-team.yaml:ro
       - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    ports: ['127.0.0.1:3000:3000']
+    ports: ['127.0.0.1:3001:3000']
 
 networks:
+  observability-ui:
   observability:
     internal: true
   frontend:

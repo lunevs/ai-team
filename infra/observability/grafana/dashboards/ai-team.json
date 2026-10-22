@@ -1,0 +1,489 @@
+{
+  "uid": "ai-team-operations",
+  "title": "AI Team · Delivery operations",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": false,
+  "timezone": "browser",
+  "refresh": "15s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "tags": [
+    "ai-team",
+    "observability"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "story_id",
+        "label": "Story UUID / regex",
+        "type": "textbox",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        }
+      },
+      {
+        "name": "backend",
+        "label": "Backend · метрики",
+        "type": "query",
+        "datasource": {
+          "uid": "ai-team-prometheus",
+          "type": "prometheus"
+        },
+        "query": "label_values(ai_team_llm_calls, backend)",
+        "refresh": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "multi": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Истории DONE · все backend",
+      "type": "stat",
+      "datasource": {
+        "uid": "ai-team-prometheus",
+        "type": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(ai_team_stories{status=\"DONE\"}) or vector(0)",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "LLM-вызовы · весь журнал",
+      "type": "stat",
+      "datasource": {
+        "uid": "ai-team-prometheus",
+        "type": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(ai_team_llm_calls{backend=~\"$backend\"}) or vector(0)",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Расход USD · фактический + резерв",
+      "type": "stat",
+      "datasource": {
+        "uid": "ai-team-prometheus",
+        "type": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(ai_team_llm_cost_usd{backend=~\"$backend\"}) or vector(0)",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Доля ошибок LLM · весь журнал",
+      "type": "stat",
+      "datasource": {
+        "uid": "ai-team-prometheus",
+        "type": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum(ai_team_llm_calls{backend=~\"$backend\",state=\"failed\"}) or vector(0)) / clamp_min((sum(ai_team_llm_calls{backend=~\"$backend\"}) or vector(0)),1)",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Токены · фактические и зарезервированные",
+      "type": "timeseries",
+      "datasource": {
+        "uid": "ai-team-prometheus",
+        "type": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (accounting) (ai_team_llm_tokens{backend=~\"$backend\"})",
+          "legendFormat": "{{accounting}}"
+        }
+      ],
+      "description": "Снимок долговечного журнала. Резерв учитывается только без actual usage; перезапуск не прибавляет расход.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "USD · фактические и зарезервированные",
+      "type": "timeseries",
+      "datasource": {
+        "uid": "ai-team-prometheus",
+        "type": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (accounting) (ai_team_llm_cost_usd{backend=~\"$backend\"})",
+          "legendFormat": "{{accounting}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "Бюджеты последних активных историй",
+      "type": "bargauge",
+      "datasource": {
+        "uid": "ai-team-prometheus",
+        "type": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10,ai_team_story_budget_ratio{story_id=~\"$story_id\",backend=~\"$backend\"})",
+          "legendFormat": "{{story_id}} / {{dimension}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.8
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "LLM p95 · весь журнал, успешные вызовы",
+      "type": "timeseries",
+      "datasource": {
+        "uid": "ai-team-prometheus",
+        "type": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "ai_team_llm_latency_seconds{backend=~\"$backend\",state=\"completed\",quantile=\"0.95\"}",
+          "legendFormat": "{{role}} / {{backend}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "title": "Длительность операций p95 · выбранное окно и история",
+      "type": "timeseries",
+      "datasource": {
+        "uid": "ai-team-loki",
+        "type": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "quantile_over_time(0.95, {service_name=~\"ai-team-.*\"} | json | event=\"operation.completed\" | story_id=~\"$story_id\" | unwrap latency_ms | __error__=\"\" [$__interval]) by (stage)",
+          "legendFormat": "{{stage}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 10,
+      "title": "QA · сохранённые попытки",
+      "type": "timeseries",
+      "datasource": {
+        "uid": "ai-team-prometheus",
+        "type": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "ai_team_qa_attempts",
+          "legendFormat": "{{result}}"
+        }
+      ],
+      "description": "По execution_attempts, без повторного счёта при возобновлении workflow."
+    },
+    {
+      "id": 11,
+      "title": "Предупреждения и критические лимиты",
+      "type": "table",
+      "datasource": {
+        "uid": "ai-team-prometheus",
+        "type": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "ALERTS{alertstate=\"firing\"}",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "description": "Prometheus rules: 80% за 1 минуту; 100% за 15 секунд; недоступность ledger/Collector. Внешние уведомления не настроены."
+    },
+    {
+      "id": 12,
+      "title": "Состояния историй · весь журнал",
+      "type": "timeseries",
+      "datasource": {
+        "uid": "ai-team-prometheus",
+        "type": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (ai_team_stories)",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Логи истории · TraceID открывает Tempo",
+      "type": "logs",
+      "datasource": {
+        "uid": "ai-team-loki",
+        "type": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 24,
+        "h": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{service_name=~\"ai-team-.*\"} | json | story_id=~\"$story_id\"",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      },
+      "description": "Только metadata. Введите UUID истории сверху. Поле TraceID связано с Tempo; обратная ссылка Tempo → Loki настроена в datasource."
+    },
+    {
+      "id": 14,
+      "title": "Как читать показатели",
+      "type": "text",
+      "datasource": {
+        "uid": "ai-team-prometheus",
+        "type": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 24,
+        "h": 4
+      },
+      "targets": [],
+      "options": {
+        "mode": "markdown",
+        "content": "**Story UUID / regex** фильтрует бюджет, операции и логи. Backend фильтрует метрики LLM.\n\nGauge-показатели берутся из всего committed ledger; выбранный период показывает их изменение, а не расходы только за период. Actual и reserved не перекрываются. Статусы включают служебные тестовые истории. Traces/logs хранятся 48 часов и не заменяют журнал PostgreSQL.\n\nОткройте **TraceID** у строки лога для просмотра spans в Tempo. Внешние уведомления отсутствуют."
+      }
+    }
+  ]
+}

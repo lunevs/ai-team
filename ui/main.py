@@ -60,6 +60,9 @@ if not id:
     st.stop()
 story=request('/stories/'+id)
 if story is None:st.stop()
+grafana=os.getenv('GRAFANA_PUBLIC_URL','').rstrip('/')
+if grafana=='http://127.0.0.1:3001':
+    st.link_button('Наблюдаемость истории · Grafana',grafana+'/d/ai-team-operations?var-story_id='+id)
 if 'mock' in story['usage'].get('backends',[]):
     st.warning('Тестовая история: использовался mock LLM. Это не результат реального запроса к модели.')
 elif story['usage'].get('backends'):
