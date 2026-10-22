@@ -17,6 +17,24 @@ with connection() as conn:
         if not row:
             conn.execute(sql)
             conn.execute('INSERT INTO schema_migrations VALUES(%s,%s)',(path.name,checksum))
+# Seed is an operator migration action; runtime has SELECT only in synthetic.
+from app.synthetic import dataset, checksum, VERSION, SEED
+from psycopg.types.json import Jsonb
+with connection() as conn:
+    conn.execute('SELECT pg_advisory_xact_lock(4182001)')
+    data=dataset()
+    prior=conn.execute('SELECT checksum FROM synthetic.dataset_info WHERE singleton=true').fetchone()
+    if prior and prior['checksum']!=checksum(data):
+        raise RuntimeError('Synthetic fixture changed without a versioned migration')
+    if not prior:
+        for table,rows in data.items():
+            columns=list(rows[0])
+            # Identifiers originate only from the fixed dataset() code, never a model/user.
+            sql='INSERT INTO synthetic.'+table+' ('+','.join(columns)+') VALUES ('+','.join(['%s']*len(columns))+')'
+            with conn.cursor() as cursor:
+                cursor.executemany(sql,[tuple(row[c] for c in columns) for row in rows])
+        conn.execute('INSERT INTO synthetic.dataset_info VALUES(true,%s,%s,%s,%s)',
+                     (VERSION,SEED,checksum(data),Jsonb({k:len(v) for k,v in data.items()})))
 with PostgresSaver.from_conn_string(settings.database_url) as saver:
     saver.setup()
 with connection() as conn:
