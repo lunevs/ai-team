@@ -1,0 +1,19 @@
+{
+  "checks": [
+    "independent_source_reference",
+    "unique_month_product_region",
+    "24_slice_grid",
+    "month_end_no_carry",
+    "DPD29_30_89_90",
+    "monthly_income",
+    "zero_denominator_NULL",
+    "empty_slice_NULL",
+    "economic_hierarchy",
+    "NPL_ratio_precision"
+  ],
+  "passed": true,
+  "failures": [],
+  "actual_rows": 24,
+  "expected_rows": 24,
+  "reference_backend": "Python Decimal; independent of generated SQL"
+}
