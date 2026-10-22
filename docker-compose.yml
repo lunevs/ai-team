@@ -186,6 +186,7 @@ services:
         condition: service_healthy
   api:
     <<: *app
+    volumes: [delivery_artifacts:/data/artifacts:ro]
     environment:
       <<: *runtime-env
       APP_API_TOKEN: ${APP_API_TOKEN:-}
@@ -202,6 +203,7 @@ services:
       start_period: 30s
   worker:
     <<: *app
+    volumes: [delivery_artifacts:/data/artifacts]
     command: [python, -m, app.worker]
     environment:
       <<: *runtime-env
@@ -222,7 +224,7 @@ services:
       SANDBOX_API_TOKEN: ${SANDBOX_API_TOKEN:-}
       GIT_BROKER_URL: http://git-broker:8000
       GIT_BROKER_API_TOKEN: ${GIT_BROKER_API_TOKEN:-}
-    networks: [backend, frontend, execution]
+    networks: [backend, frontend, execution, git-internal]
     stop_grace_period: 15s
     depends_on:
       migrate:
@@ -268,14 +270,34 @@ services:
       timeout: 3s
       retries: 5
 
+  git-broker:
+    <<: *app
+    command: [uvicorn, app.git_broker:app, --host, 0.0.0.0, --port, '8000', --no-access-log]
+    environment:
+      GITHUB_RUNTIME_TOKEN: ${GITHUB_RUNTIME_TOKEN:-}
+      GIT_BROKER_API_TOKEN: ${GIT_BROKER_API_TOKEN:-}
+      GITHUB_BASE_REF: ${GITHUB_BASE_REF:-release/188}
+    volumes: [git_workspaces:/data/git]
+    networks: [git-internal, frontend]
+    mem_limit: 256m
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
 networks:
   frontend:
   backend:
     internal: true
   execution:
     internal: true
+  git-internal:
+    internal: true
 volumes:
   pgdata:
   opdata:
   bookstack_db:
   bookstack_data:
+  delivery_artifacts:
+  git_workspaces:

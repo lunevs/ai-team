@@ -4,6 +4,7 @@ WORKDIR /workspace
 COPY requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.lock
 RUN groupadd --gid 10001 app && useradd --uid 10001 --gid app --no-create-home app
+RUN mkdir -p /data/artifacts /data/git && chown -R app:app /data
 COPY --chown=app:app . .
 USER 10001:10001
 CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
