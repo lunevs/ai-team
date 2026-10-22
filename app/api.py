@@ -293,14 +293,14 @@ def retry_execution(id:uuid.UUID,user=Depends(current_user)):
 
 @app.get('/stories/{id}/execution/artifacts/{name}')
 def download_execution_artifact(id:uuid.UUID,name:str,user=Depends(current_user)):
-    from fastapi.responses import FileResponse
     from app.execution import get_run
-    from app.delivery import artifact_path,ARTIFACT_FILES
+    from app.delivery import ARTIFACT_FILES
+    from app.storage import read_artifact,StorageError
     require_story(id);record=get_run(id)
     if name not in ARTIFACT_FILES or not record or name not in (record['artifacts'] or {}):raise HTTPException(404,'Артефакт не найден')
-    path=artifact_path(record['id'],name)
-    if not path.is_file():raise HTTPException(404,'Файл артефакта недоступен')
-    return FileResponse(path,filename=name,media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' if name.endswith('.xlsx') else 'application/octet-stream')
+    try:content=read_artifact(record['id'],name,record['artifacts'][name])
+    except StorageError:raise HTTPException(503,'Файл недоступен или не прошёл проверку целостности') from None
+    return Response(content,headers={'Content-Disposition':'attachment; filename="'+name+'"'},media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' if name.endswith('.xlsx') else 'application/octet-stream')
 
 @app.post('/stories/{id}/execution/gate')
 def execution_gate(id:uuid.UUID,user=Depends(current_user)):
