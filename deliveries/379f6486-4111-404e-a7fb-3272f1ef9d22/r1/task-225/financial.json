@@ -1,0 +1,73 @@
+{
+  "metadata": {
+    "dataset": "credit-demo-v1, seed 4182",
+    "checksum": "f14b35faad2a5456fa4e08e1c700520b6ad945b3296c77280d84430118c2959f",
+    "sql_digest": "41e1d1d9e840496db8ef0c904c7244445d23a55f2d32af915bed532e0046be08",
+    "story_id": "379f6486-4111-404e-a7fb-3272f1ef9d22",
+    "revision": 1,
+    "created_at": "2026-10-22T12:40:47.587779+00:00"
+  },
+  "monthly": [
+    {
+      "month": "2026-01",
+      "balance": "15000.00",
+      "dpd30_balance": "9000.00",
+      "dpd90_balance": "4000.00",
+      "interest_income": "9.34",
+      "npl90_ratio": "0.266667"
+    },
+    {
+      "month": "2026-02",
+      "balance": "15000.00",
+      "dpd30_balance": "10000.00",
+      "dpd90_balance": "4000.00",
+      "interest_income": "8.69",
+      "npl90_ratio": "0.266667"
+    },
+    {
+      "month": "2026-03",
+      "balance": "15000.00",
+      "dpd30_balance": "10000.00",
+      "dpd90_balance": "4000.00",
+      "interest_income": "9.91",
+      "npl90_ratio": "0.266667"
+    },
+    {
+      "month": "2026-04",
+      "balance": "10000.00",
+      "dpd30_balance": "10000.00",
+      "dpd90_balance": "5000.00",
+      "interest_income": "7.85",
+      "npl90_ratio": "0.500000"
+    },
+    {
+      "month": "2026-05",
+      "balance": "10000.00",
+      "dpd30_balance": "9000.00",
+      "dpd90_balance": "4000.00",
+      "interest_income": "7.68",
+      "npl90_ratio": "0.400000"
+    },
+    {
+      "month": "2026-06",
+      "balance": "10000.00",
+      "dpd30_balance": "9000.00",
+      "dpd90_balance": "4000.00",
+      "interest_income": "7.60",
+      "npl90_ratio": "0.400000"
+    }
+  ],
+  "economic_checks": [
+    "independent_source_reference",
+    "unique_month_product_region",
+    "24_slice_grid",
+    "month_end_no_carry",
+    "DPD29_30_89_90",
+    "monthly_income",
+    "zero_denominator_NULL",
+    "empty_slice_NULL",
+    "economic_hierarchy",
+    "NPL_ratio_precision"
+  ],
+  "method": "Decimal aggregation; NPL weighted by outstanding balance; absent observations stay NULL"
+}
