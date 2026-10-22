@@ -137,6 +137,7 @@ def team(id:uuid.UUID,user=Depends(current_user)):
     from app.config import settings
     story=require_story(id)
     with db.connection() as conn:
+        story['execution']=conn.execute('SELECT status FROM execution_runs WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()
         results=conn.execute('SELECT role,revision FROM agent_results WHERE story_id=%s ORDER BY revision DESC',(id,)).fetchall()
         calls=conn.execute('SELECT role,revision,state FROM llm_calls WHERE story_id=%s',(id,)).fetchall()
         links=conn.execute('SELECT key,external_id,url FROM external_ids WHERE story_id=%s',(id,)).fetchall()
@@ -225,6 +226,8 @@ def revise_analytics(id:uuid.UUID,data:Resume,user=Depends(current_user)):
             run=conn.execute('SELECT status FROM analytics_runs WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()
             if not run or run['status'] not in ['REVIEW','APPROVED'] or story['status'] not in ['PLAN_REVIEW','IN_PROGRESS']:
                 raise db.Conflict('Спецификацию сейчас нельзя изменить')
+            execution=conn.execute('SELECT status FROM execution_runs WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()
+            if execution:raise db.Conflict('Исполнение уже началось. Отмените историю и создайте новую с изменёнными критериями.')
             conn.execute("UPDATE stories SET revision=revision+1,answers=%s,pm=NULL,plan=NULL,plan_digest=NULL,approved=false,questions='[]',status='NEW',error_type=NULL,updated_at=now() WHERE id=%s",(data.answers,id))
             db.event(conn,story,'analytics.revision_requested',{'actor':user,'new_revision':story['revision']+1})
             db.enqueue(conn,id)
@@ -260,3 +263,41 @@ def retry_execution(id:uuid.UUID,user=Depends(current_user)):
             conn.execute("UPDATE stories SET status='IN_PROGRESS',error_type=NULL WHERE id=%s",(id,))
             db.enqueue(conn,id)
     return {'status':'QUEUED'}
+
+@app.get('/stories/{id}/execution/artifacts/{name}')
+def download_execution_artifact(id:uuid.UUID,name:str,user=Depends(current_user)):
+    from fastapi.responses import FileResponse
+    from app.execution import get_run
+    from app.delivery import artifact_path,ARTIFACT_FILES
+    require_story(id);record=get_run(id)
+    if name not in ARTIFACT_FILES or not record or name not in (record['artifacts'] or {}):raise HTTPException(404,'Артефакт не найден')
+    path=artifact_path(record['id'],name)
+    if not path.is_file():raise HTTPException(404,'Файл артефакта недоступен')
+    return FileResponse(path,filename=name,media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' if name.endswith('.xlsx') else 'application/octet-stream')
+
+@app.post('/stories/{id}/execution/gate')
+def execution_gate(id:uuid.UUID,user=Depends(current_user)):
+    from app.execution import get_run
+    from app.delivery import broker
+    require_story(id);record=get_run(id)
+    if not record or not (record['git'] or {}).get('pulls'):raise db.Conflict('PR ещё не опубликованы')
+    return broker('/gate',{'pulls':record['git']['pulls']})
+
+@app.post('/stories/{id}/execution/accept',status_code=202)
+def accept_execution(id:uuid.UUID,data:Approval,user=Depends(current_user)):
+    from app.execution import get_run
+    from app.delivery import broker
+    from app.integrations import tracker
+    require_story(id)
+    with db.story_lock(id):
+        story=db.active(id);record=get_run(id)
+        if not record or record['status']!='ACCEPTANCE' or story['status']!='ACCEPTANCE':raise db.Conflict('Результат не готов к приёмке')
+        if story['revision']!=data.revision or record['analytics_digest']!=data.plan_digest:raise db.Conflict('Ревизия изменилась')
+        tracker.honor_remote_stop(id)
+        gate=broker('/gate',{'pulls':record['git']['pulls']})
+        if not gate['eligible']:raise HTTPException(409,gate)
+        with db.connection() as conn:
+            conn.execute("UPDATE execution_runs SET status='BUSINESS_ACCEPTED',business_accepted_by=%s,business_accepted_at=now(),updated_at=now() WHERE id=%s",(user,record['id']))
+            db.event(conn,story,'execution.business_accepted',{'actor':user,'gate':gate},f"{record['id']}:business-accepted")
+            db.enqueue(conn,id)
+    return {'status':'BUSINESS_ACCEPTED'}

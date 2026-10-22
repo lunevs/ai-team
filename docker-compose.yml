@@ -190,7 +190,9 @@ services:
     environment:
       <<: *runtime-env
       APP_API_TOKEN: ${APP_API_TOKEN:-}
-    networks: [backend, frontend]
+      GIT_BROKER_URL: http://git-broker:8000
+      GIT_BROKER_API_TOKEN: ${GIT_BROKER_API_TOKEN:-}
+    networks: [backend, frontend, git-internal]
     ports: ['127.0.0.1:8000:8000']
     depends_on:
       migrate:
