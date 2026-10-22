@@ -7,7 +7,7 @@ import streamlit as st
 
 st.set_page_config(page_title='AI Delivery Team',page_icon='🏦',layout='wide')
 st.title('Bank AI Delivery Team')
-st.caption('Синтетические данные · Планирование и одобрение · Этап 1')
+st.caption('Синтетические данные · Планирование и аналитическая спецификация · Этапы 1–2')
 API=os.getenv('API_URL','http://api:8000')
 TOKEN=os.getenv('APP_API_TOKEN','')
 
@@ -84,7 +84,7 @@ if story['plan']:
                 st.write(f"**{task['title']}** · {task['role']}")
                 st.write('Критерии: '+'; '.join(task['acceptance_criteria']))
                 if task['depends_on']:st.caption('Зависит от: '+', '.join(task['depends_on']))
-if story['status']=='PLAN_REVIEW':
+if story['status']=='PLAN_REVIEW' and not story.get('analytics'):
     st.info('Одобрение относится к показанной ревизии. На этапе 1 SQL ещё не выполняется.')
     if st.button('Одобрить план',type='primary'):
         if request('/stories/'+id+'/approve-plan','POST',{'revision':story['revision'],'plan_digest':story['plan_digest']}):st.rerun()
@@ -102,7 +102,56 @@ with st.expander('События'):
     for event in request('/stories/'+id+'/events') or []:
         st.write(f"{event['created_at']} · {event['type']}")
         st.json(event['payload'])
-if story['status']=='IN_PROGRESS':st.success('План одобрен, событие сохранено. Продолжение исполнения — на следующем этапе.')
+if story['status']=='IN_PROGRESS' and not story.get('analytics'):st.success('План одобрен. Можно перейти к подготовке аналитической спецификации.')
+
+st.subheader('Аналитическая спецификация · этап 2')
+analytics=story.get('analytics')
+if not analytics:
+    st.caption('Синтетические источники → System Analyst → Financial Analyst → отдельное подтверждение. SQL агентом не выполняется.')
+    if story['status']=='IN_PROGRESS' and story['approved']:
+        if st.button('Подготовить аналитическую спецификацию',type='primary'):
+            if request('/stories/'+id+'/analytics/start','POST',{}):st.rerun()
+    else:
+        st.caption('Доступно после одобрения плана.')
+else:
+    st.write('Статус спецификации: **'+analytics['status']+'**')
+    if analytics['status'] in ['REQUESTED','RUNNING'] and story['status'] in ['BLOCKED','FAILED','CANCELLED']:
+        st.warning('Подготовка спецификации приостановлена: '+story['status'])
+    elif analytics['status'] in ['REQUESTED','RUNNING']:
+        st.info('Аналитики готовят спецификацию. Обновите историю для просмотра результата; карточки команды обновляются автоматически.')
+    if analytics.get('source_spec'):
+        with st.expander('Source-to-target mapping и качество данных',expanded=True):
+            st.write(analytics['source_spec']['grain'])
+            st.dataframe(analytics['source_spec']['mapping'],column_order=['target','source','rule'],hide_index=True,use_container_width=True)
+            for rule in analytics['source_spec']['data_quality_rules']:st.write('• '+rule)
+    if analytics.get('financial_spec'):
+        spec=analytics['financial_spec']
+        with st.expander('Паспорт метрик и экономический смысл',expanded=True):
+            st.json(spec['passport'])
+            for label,key in [('Бизнес-правила','business_rules'),('Экономические проверки','economic_checks'),('Пользовательские истории','user_stories'),('Допущения','assumptions')]:
+                st.markdown('**'+label+'**')
+                for item in spec[key]:st.write('• '+item)
+    if analytics.get('reference_rows'):
+        with st.expander('Независимые ожидаемые значения'):
+            st.caption('Python Decimal-эталон по синтетическим источникам. Это не результат SQL-витрины.')
+            st.dataframe(analytics['reference_rows'],hide_index=True,use_container_width=True)
+        st.caption('Checksum источников: '+analytics['dataset_checksum'])
+    if analytics.get('documentation_url'):
+        st.link_button('Спецификация в BookStack',analytics['documentation_url'])
+    if analytics['status']=='REVIEW' and story['status']=='PLAN_REVIEW':
+        st.info('Подтвердите паспорт и mapping этой ревизии. Изменение критериев требует новой ревизии через уточнения.')
+        if st.button('Одобрить аналитическую спецификацию',type='primary'):
+            if request('/stories/'+id+'/analytics/approve','POST',{'revision':story['revision'],'plan_digest':analytics['digest']}):st.rerun()
+    if analytics['status']=='APPROVED':
+        st.success('Спецификация одобрена. Исполнение SQL и QA реализации — этап 3.')
+    elif analytics['status']=='REVIEW':
+        with st.form('analytics-change'):
+            changes=st.text_area('Уточнения, меняющие спецификацию или критерии')
+            if st.form_submit_button('Вернуть на уточнение'):
+                if changes.strip():
+                    result=request('/stories/'+id+'/analytics/revise','POST',{'answers':changes})
+                    if result:st.rerun()
+                else:st.warning('Опишите требуемое изменение.')
 
 @st.fragment(run_every='10s')
 def team_panel(story_id):

@@ -46,6 +46,9 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
     for call in calls:
         if call['role']=='financial_analyst' and call['state']=='reserved' and call['revision']==story['revision'] and worker_active and not stopped:
             cards['financial_analyst']['current']='Проверяет паспорт метрик'
+    for call in calls:
+        if call['role']=='system_analyst' and call['state']=='reserved' and call['revision']==story['revision'] and worker_active and not stopped:
+            cards['system_analyst']['current']='Готовит спецификацию источников' if any(r['role']=='system_analyst' and r['revision']==story['revision'] for r in results) else PLANNING['system_analyst']
     prefix = f"r{story['revision']}:task:"
     by_key = {link['key']: link for link in links}
     for epic in (story.get('plan') or {}).get('epics', []):
