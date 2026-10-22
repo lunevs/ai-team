@@ -35,7 +35,7 @@ x-op: &op
       condition: service_started
 x-app: &app
   build: .
-  image: ai-team-app:0.5.0
+  image: ai-team-app:0.6.0
   user: '10001:10001'
   restart: unless-stopped
   networks: [backend]
@@ -49,7 +49,7 @@ x-app: &app
   mem_limit: 512m
 x-runtime-env: &runtime-env
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-  DATABASE_URL: postgresql://ai_team_runtime:${APP_RUNTIME_DB_PASSWORD:-not-configured}@postgres/ai_team
+  DATABASE_URL: ${APP_DATABASE_URL:-postgresql://ai_team_runtime:${APP_RUNTIME_DB_PASSWORD:-not-configured}@postgres/ai_team}
   OPENPROJECT_URL: http://openproject:8080
   OPENPROJECT_PUBLIC_URL: http://localhost:8080
   OPENPROJECT_PROJECT_ID: '3'
@@ -202,7 +202,7 @@ services:
     command: [python, -m, app.migrate]
     restart: 'no'
     environment:
-      DATABASE_URL: postgresql://ai_team:${APP_DB_PASSWORD:?run init_env}@postgres/ai_team
+      DATABASE_URL: ${APP_MIGRATION_DATABASE_URL:-postgresql://ai_team:${APP_DB_PASSWORD:?run init_env}@postgres/ai_team}
     depends_on:
       postgres:
         condition: service_healthy
@@ -288,7 +288,7 @@ services:
     <<: *app
     command: [uvicorn, app.sandbox_service:app, --host, 0.0.0.0, --port, '8000', --no-access-log]
     environment:
-      SANDBOX_DATABASE_URL: postgresql://ai_team_sandbox:${SANDBOX_DB_PASSWORD:-not-configured}@postgres/ai_team
+      SANDBOX_DATABASE_URL: ${SANDBOX_DATABASE_URL:-postgresql://ai_team_sandbox:${SANDBOX_DB_PASSWORD:-not-configured}@postgres/ai_team}
       SANDBOX_API_TOKEN: ${SANDBOX_API_TOKEN:-}
     networks: [execution]
     mem_limit: 256m

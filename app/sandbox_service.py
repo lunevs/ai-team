@@ -19,7 +19,9 @@ class Query(BaseModel):
     select_sql:str=Field(max_length=30000)
 
 
-def connection():return psycopg.connect(os.environ['SANDBOX_DATABASE_URL'],row_factory=dict_row,connect_timeout=5)
+def connection():
+    from app.portability import database_parameters
+    return psycopg.connect(**database_parameters(os.environ['SANDBOX_DATABASE_URL']),row_factory=dict_row,connect_timeout=5)
 
 def auth(authorization):
     import hmac

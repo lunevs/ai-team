@@ -1,6 +1,6 @@
 [project]
 name = "bank-ai-delivery-team"
-version = "0.5.0"
+version = "0.6.0"
 requires-python = ">=3.12"
 description = "Локальная команда банковской аналитики"
 [tool.pytest.ini_options]

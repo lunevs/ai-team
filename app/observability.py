@@ -50,7 +50,7 @@ def metadata(fields):
 
 service=os.getenv('OTEL_SERVICE_NAME','ai-team-worker')
 if service not in {'ai-team-worker','ai-team-api'}:service='ai-team-worker'
-provider=TracerProvider(resource=Resource({'service.name':service,'service.version':'0.5.0','deployment.environment.name':'local'}),
+provider=TracerProvider(resource=Resource({'service.name':service,'service.version':'0.6.0','deployment.environment.name':'local'}),
     span_limits=SpanLimits(max_attributes=16,max_events=0,max_links=0,max_attribute_length=128))
 trace.set_tracer_provider(provider)
 logger=logging.getLogger('ai-team')
