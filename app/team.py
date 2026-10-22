@@ -38,7 +38,14 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
             cards[role]['history'].append({'title':'Аналитическая спецификация','revision':result['revision'],
                 'completed_at':completions.get((result['role'],result['revision'])),'url':None,'source':'agent'})
             if result['revision']==story['revision']:cards[role]['completed']+=1
+        elif result['role'].startswith(('data_developer_','system_analyst_review_')):
+            role='data_developer' if result['role'].startswith('data_developer_') else 'system_analyst'
+            cards[role]['history'].append({'title':'Подготовлен SQL' if role=='data_developer' else 'Ревью SQL',
+                'revision':result['revision'],'completed_at':completions.get((result['role'],result['revision'])),
+                'url':None,'source':'agent'})
     for call in calls:
+        if call['role']=='data_developer' and call['state']=='reserved' and call['revision']==story['revision'] and worker_active and not stopped:
+            cards['data_developer']['current']='Разрабатывает SQL-витрину'
         if (call['revision'] == story['revision'] and call['state'] == 'reserved'
                 and worker_active and not stopped and call['role'] in PLANNING
                 and not any(r['role']==call['role'] and r['revision']==story['revision'] for r in results)):
@@ -69,10 +76,15 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
                 card['remaining'] += 1
                 if status.get('isInProgress') and not stopped:
                     card['current'] = task['title']
+    execution=story.get('execution') or {}
+    active_role={'QA':'qa','ARCHITECT_REVIEW':'system_analyst','DEVELOPING':'data_developer','READY_TO_PUBLISH':'application_developer'}.get(execution.get('status'))
+    if active_role and worker_active and not stopped:cards[active_role]['current']={'qa':'Проверяет расчёт витрины','system_analyst':'Проверяет SQL и архитектуру','data_developer':'Разрабатывает SQL-витрину','application_developer':'Готовит отчёт и публикацию'}[active_role]
     for card in cards.values():
         if stopped:
             card['current'] = {'BLOCKED': 'Работа заблокирована', 'FAILED': 'Требуется внимание',
                                'CANCELLED': 'История отменена'}[story['status']]
+        elif execution.get('status') in ['ACCEPTANCE','BUSINESS_ACCEPTED'] and card['remaining']:
+            card['current']='Ожидает ревью и приёмки'
         elif card['current'] == 'Нет активной задачи' and card['remaining']:
             card['current'] = ('Ожидает одобрения спецификации' if story.get('approved') else 'Ожидает одобрения плана') if story['status'] == 'PLAN_REVIEW' else 'Задачи в очереди'
     return {'agents': list(cards.values()), 'tracker_available': tracker_available,

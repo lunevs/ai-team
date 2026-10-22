@@ -55,6 +55,9 @@ def run(story_id):
     story=db.active(story_id);tracker.honor_remote_stop(story_id)
     record=get_run(story_id)
     if record['status'] in ['ACCEPTANCE','DONE','ESCALATED']:return
+    if record['status']=='BUSINESS_ACCEPTED':
+        from app.delivery import complete_acceptance
+        complete_acceptance(story,record);return
     if record['status'] in ['READY_TO_PUBLISH','WAITING_GITHUB','PUBLISHED']:
         finish_delivery(story,record);return
     with db.connection() as conn:

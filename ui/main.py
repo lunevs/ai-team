@@ -7,7 +7,7 @@ import streamlit as st
 
 st.set_page_config(page_title='AI Delivery Team',page_icon='🏦',layout='wide')
 st.title('Bank AI Delivery Team')
-st.caption('Синтетические данные · Планирование и аналитическая спецификация · Этапы 1–2')
+st.caption('Синтетические данные · Планирование, аналитика, расчёт и отчёт · Этапы 1–3')
 API=os.getenv('API_URL','http://api:8000')
 TOKEN=os.getenv('APP_API_TOKEN','')
 
@@ -152,6 +152,75 @@ else:
                     result=request('/stories/'+id+'/analytics/revise','POST',{'answers':changes})
                     if result:st.rerun()
                 else:st.warning('Опишите требуемое изменение.')
+
+st.subheader('Расчёт и результат · этап 3')
+execution=story.get('execution')
+if not execution:
+    if analytics and analytics['status']=='APPROVED' and story['status']=='IN_PROGRESS':
+        if st.button('Запустить реализацию и QA',type='primary'):
+            if request('/stories/'+id+'/execution/start','POST',{}):st.rerun()
+    else:st.caption('Доступно после подтверждения аналитической спецификации.')
+else:
+    st.write('Статус исполнения: **'+execution['status']+'** · попытка '+str(execution['attempt'])+' из 3')
+    if execution.get('qa'):
+        with st.expander('Проверки качества',expanded=not execution['qa']['passed']):
+            st.write('QA: '+('пройден' if execution['qa']['passed'] else 'есть замечания'))
+            st.json(execution['qa'])
+    if execution.get('review'):
+        with st.expander('Ревью системного аналитика / архитектора'):
+            st.json(execution['review'])
+            st.caption('Ревью модели дополняет независимое GitHub review.')
+    if execution.get('rows') and (execution.get('qa') or {}).get('passed'):
+        import pandas as pd
+        from decimal import Decimal,ROUND_HALF_UP
+        rows=execution['rows']
+        products=st.multiselect('Продукты',sorted({str(r['product_id']) for r in rows}),default=sorted({str(r['product_id']) for r in rows}))
+        regions=st.multiselect('Регионы',sorted({r['region'] for r in rows}),default=sorted({r['region'] for r in rows}))
+        filtered=[r for r in rows if str(r['product_id']) in products and r['region'] in regions]
+        monthly=[]
+        for month in sorted({r['month'] for r in filtered}):
+            parts=[r for r in filtered if r['month']==month];item={'month':month}
+            for metric in ['balance','dpd30_balance','dpd90_balance','interest_income']:
+                values=[Decimal(str(r[metric])) for r in parts if r[metric] is not None]
+                item[metric]=sum(values) if values else None
+            b,n=item['balance'],item['dpd90_balance']
+            item['npl90_ratio']=(n/b).quantize(Decimal('.000001'),rounding=ROUND_HALF_UP) if b is not None and n is not None and b else None
+            monthly.append(item)
+        if monthly:
+            month=st.select_slider('Месяц показателей',[r['month'] for r in monthly],value=monthly[-1]['month'])
+            current=next(r for r in monthly if r['month']==month)
+            cols=st.columns(3)
+            cols[0].metric('Остаток, RUB','—' if current['balance'] is None else f"{current['balance']:,.2f}")
+            cols[1].metric('NPL90','—' if current['npl90_ratio'] is None else f"{current['npl90_ratio']:.2%}")
+            cols[2].metric('Доход за месяц, RUB','—' if current['interest_income'] is None else f"{current['interest_income']:,.2f}")
+            frame=pd.DataFrame([{k:float(v) if isinstance(v,Decimal) else v for k,v in r.items()} for r in monthly]).set_index('month')
+            st.line_chart(frame[['balance','dpd90_balance']],color=['#376CA6','#183153'])
+            st.bar_chart(frame[['interest_income']],color='#186A3B')
+        st.caption('Остатки — на последний календарный день месяца. Доход — сумма за месяц. NPL рассчитан из суммарных остатков. Пропуски сохраняются.')
+        with st.expander('Детализация витрины'):
+            st.dataframe(filtered,hide_index=True,use_container_width=True)
+    for name in ['report.xlsx','query.sql','qa.json']:
+        if name in (execution.get('artifacts') or {}):
+            try:
+                response=httpx.get(API+execution['artifacts'][name]['url'],headers={'Authorization':'Bearer '+TOKEN},timeout=15)
+                if response.status_code==200:st.download_button('Скачать '+name,response.content,file_name=name,key='download-'+name)
+            except httpx.TransportError:st.caption('Файл временно недоступен: '+name)
+    git=execution.get('git') or {}
+    if git.get('documentation_url'):st.link_button('Результат в BookStack',git['documentation_url'])
+    for pull in git.get('pulls',[]):st.link_button('PR задачи #'+str(pull['task_id']),pull['pull_request_url'])
+    if execution['status']=='WAITING_GITHUB':
+        st.info('Расчёт и отчёт готовы. Для публикации PR требуется сервисный GitHub-токен в локальном .env и перезапуск GitHub broker.')
+    if execution['status'] in ['WAITING_GITHUB','READY_TO_PUBLISH','PUBLISHED']:
+        if st.button('Повторить публикацию PR'):
+            if request('/stories/'+id+'/execution/retry','POST',{}):st.rerun()
+    if execution['status']=='ACCEPTANCE':
+        st.info('Результат ожидает приёмки. Сначала завершите независимое GitHub review, CI и слияние task PR.')
+        if st.button('Проверить готовность PR'):
+            gate=request('/stories/'+id+'/execution/gate','POST',{})
+            if gate:st.json(gate)
+        if st.button('Принять результат',type='primary'):
+            if request('/stories/'+id+'/execution/accept','POST',{'revision':story['revision'],'plan_digest':execution['analytics_digest']}):st.rerun()
+    if execution['status']=='ESCALATED':st.warning('Три попытки исчерпаны. Требуется решение системного аналитика и уточнение задачи.')
 
 @st.fragment(run_every='10s')
 def team_panel(story_id):
