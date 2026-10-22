@@ -32,3 +32,15 @@ def test_metadata_rejects_unbounded_values_and_untrusted_dimensions():
     assert metadata({'role':['qa'],'backend':'secret','status':{},'tokens':10**500,'latency_ms':float('nan'),
                      'model':'secret token','prompt':'text','trace_id':'not-a-trace'})=={}
     assert metadata({'role':'qa','backend':'deterministic','passed':True,'attempt':2})=={'role':'qa','backend':'deterministic','passed':True,'attempt':2}
+
+def test_framework_spans_never_enter_application_export_queue():
+    from app.observability import ApplicationBatchSpanProcessor
+    exporter=InMemorySpanExporter();provider=TracerProvider()
+    provider.add_span_processor(ApplicationBatchSpanProcessor(exporter,schedule_delay_millis=60000))
+    with provider.get_tracer('fastapi').start_as_current_span('fastapi.endpoint',attributes={'request.body':'FRAMEWORK_CANARY'}):
+        with SafeTracer(provider.get_tracer('ai-team')).start_as_current_span('telemetry.probe'):pass
+    assert provider.force_flush()
+    spans=exporter.get_finished_spans()
+    assert [span.name for span in spans]==['telemetry.probe']
+    assert 'FRAMEWORK_CANARY' not in str(spans[0].attributes)
+    provider.shutdown()

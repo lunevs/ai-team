@@ -79,6 +79,7 @@
       "successful": true
     }
   ],
+  "dashboard_version": 3,
   "prometheus_targets": [
     {
       "job": "ai-team-ledger",

@@ -1,0 +1,55 @@
+{
+  "backend": "mock",
+  "checks": [
+    "real SQL, actual tracker Bug and corrected QA; 24 rows, seven mock calls, no Git writes",
+    "scoped worker leaves unrelated story NEW and enforces shared call budget",
+    "restart and retry preserve ledger usage, artifact hashes and trace ID",
+    "metrics token grants only metrics; APP token and missing credentials rejected",
+    "Prometheus durable budget gauge equals ledger; critical alert actually fires",
+    "Collector outage leaves API/ledger available; export recovers after restart (best effort)",
+    "API/worker/tool/agent spans share persisted story trace in real Tempo",
+    "Loki/Tempo/metrics exclude private payload, SQL/prompt/response/exception canaries and all local credentials",
+    "provisioned Loki→Tempo and Tempo→Loki links preserve Grafana macros"
+  ],
+  "story_ids": [
+    "0c219151-ac93-4399-b1e1-d9fa46ea14f4",
+    "b5486365-da93-4f8a-836c-de26f31911b8",
+    "f7f9fdc8-f677-4e86-9aa5-3f1fea77820e"
+  ],
+  "status": "passed",
+  "trace_id": "a1dbaa3bec0a4982a5deb6b59aac7215",
+  "span_names": [
+    "agent.data_developer",
+    "agent.financial_analyst",
+    "agent.pm",
+    "agent.qa",
+    "agent.system_analyst",
+    "artifact.publish",
+    "llm.request",
+    "story.run",
+    "telemetry.probe",
+    "tool.github",
+    "tool.knowledge",
+    "tool.sql",
+    "tracker.create"
+  ],
+  "services": [
+    "ai-team-api",
+    "ai-team-worker"
+  ],
+  "usage": {
+    "calls": 7,
+    "tokens": 700,
+    "estimated_cost_usd": 0.0,
+    "estimated_calls": 0,
+    "backends": [
+      "mock"
+    ],
+    "models": [
+      "mock/contracts-v1"
+    ]
+  },
+  "qa_attempts": 2,
+  "rows": 24,
+  "telemetry_contains_credentials": false
+}

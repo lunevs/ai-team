@@ -1,6 +1,6 @@
 # Техническое задание: Bank AI Delivery Team — MVP
 
-Версия: 1.9 • 22 октября 2026 • Язык реализации и документации: русский (идентификаторы в коде — английские)
+Версия: 1.10 • 22 октября 2026 • Язык реализации и документации: русский (идентификаторы в коде — английские)
 
 ## 1. Идея и цель
 
@@ -169,7 +169,7 @@ Web UI: ввод user story, просмотр плана, кнопка одоб�
 
 ## 13. Наблюдаемость и метрики
 
-OpenTelemetry spans: `story.run`, `agent.pm`, `agent.system_analyst`, `agent.financial_analyst`, `agent.developer`, `agent.qa`, `llm.request`, `tool.sql`, `tracker.create`, `artifact.publish`. Атрибуты: story_id, role, model identifier, latency, usage, status, error_type, estimated_cost_usd; исключить PII/секреты и payload. Корреляция по trace_id и story_id. Grafana dashboard: длительность этапов, error rate, токены, затраты, количество успешных user stories, количество итераций QA. Loki — JSON-логи, Tempo — traces. Настроить ограничение retention/объёма для локального MVP.
+OpenTelemetry spans: `story.run`, `agent.pm`, `agent.system_analyst`, `agent.financial_analyst`, `agent.data_developer`, `agent.qa`, `llm.request`, `tool.sql`, `tool.github`, `tool.knowledge`, `tracker.create`, `artifact.publish`. Атрибуты: story_id, role, model identifier, latency, usage, status, error_type, estimated_cost_usd; исключить PII/секреты и payload. Корреляция по trace_id и story_id. Grafana dashboard: длительность этапов, error rate, токены, затраты, количество успешных user stories, количество итераций QA. Loki — JSON-логи, Tempo — traces. Настроить ограничение retention/объёма для локального MVP.
 
 ## 14. Структура репозитория (ориентир)
 
@@ -332,10 +332,11 @@ JSON-логи, события, trace IDs и учёт usage вводятся с �
 
 | 20 октября 2026 | 1.6 | Начат этап 0: Compose, реальные API-проверки, OpenRouter, GitHub, документация и измерения ресурсов | Результаты и ограничения перечислены в разделе 21 |
 | 20 октября 2026 | 1.7 | Реализован вертикальный срез этапа 1, runtime-доступы согласованы, подготовлены PR #4–7 | 7 unit/integration, 13 mock e2e, реальный OpenRouter и восстановление checkpoint прошли; раздел 22 |
+| 22 октября 2026 | 1.10 | Этап 4: опциональный профиль наблюдаемости, безопасный экспорт, durable gauges, Grafana и бюджетные правила | 44 unit/integration, реальные Loki/Tempo/Prometheus/Grafana, сквозной mock; отчёты и ограничения — раздел 26 |
 
 ## 21. Фактические результаты этапа 0 (20 октября 2026)
 
-Ниже сохранён отчёт инфраструктурного этапа. Этап 0 принят пользователем, PR #1/#2 слиты в release/38. Актуальный статус приложения этапа 1 — в разделе 22; sandbox и профиль observability ещё не реализованы.
+Ниже сохранён отчёт инфраструктурного этапа. Этап 0 принят пользователем, PR #1/#2 слиты в release/38. Это исторический срез этапа 0; актуальные результаты sandbox и observability — в разделах 25–26.
 
 - Docker Desktop 4.37.2, Engine 27.4.0, Compose 2.31.0; сервер linux/arm64. Docker выделено 8 217 686 016 bytes (около 7,65 GiB), параллельно работают 7 контейнеров других проектов; они не изменялись.
 - Compose: postgres, cache, op-seeder, openproject, op-worker, op-cron, hocuspocus, bookstack-db, bookstack. Все образы проверены на ARM64 и закреплены digest. Проверка `docker compose config --quiet` прошла.
@@ -486,7 +487,7 @@ Git-broker реализует настоящий GitHub Git Data API: blobs/tree
 
 Реальный OpenRouter: служебная история 379f6486-4111-404e-a7fb-3272f1ef9d22 / задача №219, SQL прошёл на третьей попытке, QA=passed (24 строки), отдельный review approved. Общий расход планирования/аналитики/разработки: 8 вызовов, 30072 tokens, $0.010817503 по usage. Первоначально результат был WAITING_GITHUB, без сервисного токена; последующая реальная GitHub-проверка описана ниже. Тестовые истории с mock отменены после проверки. Штатный backend возвращён на OpenRouter. Отчёты — docs/stage3-check.json, stage3-security-check.json, stage3-openrouter-check.json. Третий лист Excel «Качество данных» и UI показывают source_row_count/snapshot_loan_count/missing_snapshot_loans отдельно по независимому контролю источников. Уже сформированные артефакты неизменяемы; новые шаблоны применяются к новым запускам.
 
-PR реализации: №189 → [#17](https://github.com/lunevs/ai-team/pull/17), №190 → [#18](https://github.com/lunevs/ai-team/pull/18), №191 → [#19](https://github.com/lunevs/ai-team/pull/19), №192 → [#20](https://github.com/lunevs/ai-team/pull/20). База release/188; ветки последовательно включают зависимости, порядок слияния 189 → 190 → 191 → 192 → 193. Задачи не закрываются до приёмки. Техническая реализация этапа 3 передана на ревью; этап 4 не начат.
+PR реализации: №189 → [#17](https://github.com/lunevs/ai-team/pull/17), №190 → [#18](https://github.com/lunevs/ai-team/pull/18), №191 → [#19](https://github.com/lunevs/ai-team/pull/19), №192 → [#20](https://github.com/lunevs/ai-team/pull/20). База release/188; ветки последовательно включают зависимости, порядок слияния 189 → 190 → 191 → 192 → 193. Задачи не закрываются до приёмки. На момент передачи этапа 3 этап 4 ещё не был начат; его текущий статус описан в разделе 26.
 
 Перед runtime-публикацией broker проверяет app/runtime_contract.json (version=4) в фактическом SHA базовой release-ветки. Если PR реализации ещё не слиты, сохраняется WAITING_GITHUB даже при настроенном токене; артефакты не публикуются от неполной базы. Повтор публикации проверяет SHA256 уже сформированных файлов и не переписывает их новым шаблоном.
 
@@ -496,7 +497,7 @@ PR реализации: №189 → [#17](https://github.com/lunevs/ai-team/pull
 
 Итоговый PR задачи №193: [#21](https://github.com/lunevs/ai-team/pull/21), после #17–20. Это PR самой реализации; #22–27 — результаты работы агентов над служебной историей. Все PR приложены к чату. Публикация разбита по одной задаче: остановка проверяется перед следующей задачей, результат уже отправленного HTTP сохраняется в аудите. Чужие ветки и main не перезаписываются.
 
-## 26. Этап 4 — наблюдаемость (в реализации)
+## 26. Этап 4 — наблюдаемость (готово к ревью и приёмке)
 
 Заказчик разрешил следующий этап. PR #17–21 слиты в release/188; база нового эпика №263 — принятая release/188 (82542b0). Версия epic-263-v0.5.0, release/263. Задачи: №264 инфраструктура наблюдаемости, №265 безопасная телеметрия и метрики, №266 Grafana/dashboards/budget alerts, №267 сквозная проверка и документация. Каждая реализуется в feature/<ID>, PR в release/263; исполнители назначены в OpenProject. Человеческая приёмка служебной истории №219 и её PR #22–27 не подменяется принятием этапа реализации.
 
@@ -509,3 +510,15 @@ Retention: Loki и Tempo 48 часов; Prometheus 48 часов/128 MB. Это 
 Зафиксированы официальные multi-arch images по digest: Grafana 13.2.4, Loki 3.7.9, Tempo 2.10.10 (локальный monolithic backend), Collector contrib 0.163.2, Prometheus 3.15.1. Python OTLP HTTP exporter 1.45.1 согласован с текущим SDK. Используется современный otlp_http exporter в Collector и нативный Loki OTLP endpoint, без устаревшего loki exporter или Docker log socket. Источники: [Python exporters](https://opentelemetry.io/docs/languages/python/exporters/), [Loki OTLP](https://grafana.com/docs/loki/latest/send-data/otel/otel-collector-getting-started/), [Collector OTLP HTTP](https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/otlphttpexporter/README.md).
 
 Задача №265: введён закрытый контракт metadata для stdout/OTLP, отключена автоматическая запись исключений/stack traces и span events. Названия операций и поля заданы кодом; неизвестные поля и значения отбрасываются. Сохраняется единый trace_id из PostgreSQL между API-мутациями и повторными worker.run, включая agent/LLM, tracker, knowledge, SQL, QA, Git и отчёты. Бюджет и QA считаются по committed ledger, а не числу экспортированных spans. Индексы добавляются миграцией 005; endpoint /metrics использует read-only repeatable-read transaction и statement timeout, отдельный metrics token не даёт доступа к /stories. Локальный тестовый worker может ограничиваться WORKER_STORY_IDS (до 10 UUID), чтобы не выполнять чужие истории через mock backend. При выключенном endpoint экспорт отсутствует, JSON-логи остаются. API, SDK resource и локальный image согласованы с версией 0.5.0.
+
+Задача №266: provisioned Grafana dashboard ai-team-operations содержит 13 исполняемых запросов; все проверены через настоящий Grafana datasource API. Health Prometheus/Loki/Tempo — OK, обе scrape targets — up. Dashboard показывает расход actual/reserved, lifetime LLM p95, QA, состояния и бюджетные alerts. Переходы Loki↔Tempo используют trace_id, UI открывает dashboard с фильтром истории. Локальная Grafana перенесена на 127.0.0.1:3001: прежний порт 3000 принадлежал другому локальному приложению, ошибочно отправленный временный пароль Grafana немедленно заменён; чужое приложение не изменялось. Проверка health теперь подтверждает продукт/версию до передачи Basic credentials. Пароли в документацию не включаются.
+
+Проверки на текущем коде: 44 unit/integration passed (включая PostgreSQL и запрет экспорта framework spans), Collector validate и четыре Prometheus rules прошли. CI дополнен проверкой профиля observability, Collector config и promtool rules. Сквозные результаты и фактическая RAM фиксируются в docs/stage4-*.json. Инструкции включения, выключения, логина и ограничений добавлены в README.
+
+PR инфраструктуры №264: [#28](https://github.com/lunevs/ai-team/pull/28); телеметрия №265: [#29](https://github.com/lunevs/ai-team/pull/29); dashboard №266: [#30](https://github.com/lunevs/ai-team/pull/30). Зависимости включены в следующие ветки; порядок слияния 264 → 265 → 266 → 267 в release/263. Main и пользовательские approvals автоматически не меняются.
+
+Итоговый E2E после фильтрации FastAPI: 9 проверок passed на реальных PostgreSQL/OpenProject/BookStack/sandbox/Collector/Loki/Tempo/Prometheus/Grafana. История 0c219151-ac93-4399-b1e1-d9fa46ea14f4, trace a1dbaa3bec0a4982a5deb6b59aac7215: семь mock-вызовов/700 tokens/$0, реальный Bug, QA со второй попытки, 24 строки. После restart/retry usage, trace_id и SHA256 не изменились. Критический alert реально перешёл в firing. При остановленном Collector сохранились чтение API, usage и отмена собственной тестовой истории; после возврата экспорт продолжился. JSON Loki, Tempo и metrics не содержали canaries story/prompt/SQL/ответа/credential/текста исключения и значений локальных секретов. Обе службы API/worker присутствуют в одной трассе, spans стороннего framework исключены до очереди экспорта; двунаправленные Grafana-макросы проверены в provisioned datasources. Все тестовые истории отменены, тестовые контейнеры удалены, штатный worker возвращён на OpenRouter; новых платных вызовов на этапе 4 не требовалось.
+
+RAM по Docker working set: профиль observability на idle — 515.0 MiB, максимум в этом прогоне — 567.4 MiB, суммарный лимит — 1216 MiB. Весь проект после восстановления штатного worker — 3725.0 MiB (включая OpenProject/BookStack/БД, без других проектов). Это локальный замер ARM64 под одним синтетическим прогоном, не обещание ёмкости для конкурентной production-нагрузки. Baseline/idle сняты с остановленным штатным worker; workload включает два временных тестовых контейнера. Полные срезы — docs/stage4-resources.json.
+
+Budget bar использует instant-query с текущими значениями, чтобы отменённые истории не оставались на панели из-за lastNotNull за выбранный интервал. Исторические gauge-графики и lifetime-подписи сохранены. Loki/Tempo retention 48h проверен конфигурацией и запуском; фактическое истечение 48 часов в рамках прогона не ожидалось. Положительный независимый GitHub review и выпуск основной бизнес-истории остаются за человеком.

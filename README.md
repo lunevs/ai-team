@@ -159,7 +159,7 @@ docker compose up -d worker
 
 ```sh
 # Unit без сети и секретов:
-docker run --rm --network none ai-team-app:0.2.0 python -m pytest -q -p no:cacheprovider tests/unit
+docker run --rm --network none ai-team-app:0.5.0 python -m pytest -q -p no:cacheprovider tests/unit
 # Integration проверяет реальный PostgreSQL. На время теста остановить worker,
 # чтобы он не забирал технические задания тестов из той же локальной очереди:
 docker compose stop worker
@@ -219,7 +219,7 @@ docker compose up -d sandbox git-broker api worker ui
 
 Sandbox использует отдельную роль без DDL в источниках/public, внутреннюю сеть без внешнего выхода, таймаут SQL 5 секунд и лимит 1000 строк. Worker не получает sandbox DB login, а sandbox не получает LLM/GitHub/трекер credentials. Контейнеры работают без root, с readonly rootfs и без Docker socket.
 
-В локальный `.env` добавляется `GITHUB_RUNTIME_TOKEN` — fine-grained token только для `lunevs/ai-team`: Contents/Pull requests read-write, Metadata/Checks/Commit statuses read-only. Затем `docker compose up -d --no-deps --force-recreate git-broker`. Токен не передаётся worker/API/моделям; не вставляйте его в чат. `GITHUB_BASE_REF` по умолчанию `release/188`: перед использованием полного runtime необходимо слить PR реализации в эту ветку. Операторский GitHub credential не используется runtime. Без токена расчёт доступен, статус доставки — `WAITING_GITHUB`.
+В локальный `.env` добавляется `GITHUB_RUNTIME_TOKEN` — fine-grained token только для `lunevs/ai-team`: Contents/Pull requests read-write, Metadata/Checks/Commit statuses read-only. Затем `docker compose up -d --no-deps --force-recreate git-broker`. Токен не передаётся worker/API/моделям; не вставляйте его в чат. `GITHUB_BASE_REF` по умолчанию `release/188`: PR реализации #17–21 уже слиты в эту ветку; контракт runtime доступен. Операторский GitHub credential не используется runtime. Без токена расчёт доступен, статус доставки — `WAITING_GITHUB`.
 
 Broker создаёт `feature/<task>` и PR в `release/<epic>`; commit фиксируется после QA, force-push/автослияния нет. Для приёмки нужны независимое GitHub review другим аккаунтом, успешные `application`/`validate` и слияние task PR. Автор PR не может одобрить собственный PR, даже с другим токеном того же пользователя. После явной приёмки создаются release PR в main (`RELEASE_REVIEW`). После их независимого review/CI/ручного merge кнопка проверки выпуска создаёт тег по реальному merge commit и переводит задачи/эпики и историю в DONE. Объекты версий OpenProject создаются оператором, runtime-права не расширяются.
 
@@ -239,4 +239,36 @@ docker rm -f ai-team-stage3-mock ai-team-stage3-git-mock
 docker compose start worker
 ```
 
-Служебная реальная история №219 прошла создание шести PR #22–27 в release/221 и release/226 от тестовой feature/193. Повтор вернул тот же commit/PR; CI успешен, независимое review и merge ожидаются. Штатная база остаётся release/188. Подробности — `docs/stage3-github-check.json`. PR реализации #17–21 и PR результатов #22–27 имеют разное назначение.
+Служебная реальная история №219 прошла создание шести PR #22–27 в release/221 и release/226 от тестовой feature/193. Повтор вернул тот же commit/PR; CI успешен, независимое review и merge ожидаются. Штатная база остаётся release/188. Подробности — `docs/stage3-github-check.json`. PR реализации #17–21 слиты в release/188; PR результатов #22–27 ожидают человеческого review/merge и имеют другое назначение.
+
+## Наблюдаемость — этап 4
+
+Опциональный профиль `observability`: Grafana + Prometheus + Loki + Tempo + OTLP Collector. Первый запуск после получения всех PR этапа:
+
+```sh
+python3 scripts/bootstrap_observability.py
+docker compose build migrate api worker ui sandbox git-broker
+docker compose run --rm --no-deps migrate
+docker compose --profile observability up -d otel-collector loki tempo prometheus grafana api worker ui
+python3 scripts/check_observability_stack.py
+```
+
+Grafana: [дашборд команды](http://127.0.0.1:3001/d/ai-team-operations), логин `admin`; пароль — значение `GRAFANA_ADMIN_PASSWORD` в локальном `.env`. Bootstrap создаёт пароль и отдельный `TELEMETRY_METRICS_TOKEN`, сохраняет файл с правами 0600, не печатает секреты и не меняет существующие значения. На существующем Grafana volume изменение `.env` само по себе не меняет пароль аккаунта. Порт 3001 занят — сначала остановите запуск и согласуйте другой loopback-порт; не отправляйте пароль неизвестному сервису. Health-проверка подтверждает идентичность Grafana до Basic authentication.
+
+Из карточки выбранной истории UI открывается тот же дашборд с фильтром story ID. TraceID в логах открывает Tempo; из span можно перейти в Loki. Поля экспорта ограничены метаданными: ID, роли, этапы, статусы, latency, usage. Истории, SQL, prompts, ответы, тексты исключений и credentials не экспортируются. HTTP auto-instrumentation отсутствует. Бюджеты/стоимость/QA берутся из committed PostgreSQL ledger; метрики — **gauges за весь журнал**, а не выбранный интервал расходов. Actual и reserved показаны отдельно, повтор worker не увеличивает значения. Длительность операций в Loki относится к выбранному окну; LLM p95 в ledger — за всю историю вызовов. Backend-фильтр применяется к метрикам, story-фильтр — к логам и бюджетам.
+
+Бюджетные правила 80% (1 минута) и 100% (15 секунд), отсутствие ledger/Collector (1 минута) видны на дашборде; внешние email/мессенджер уведомления не настроены. Достижение 100% ещё не означает неуспех истории: проверяйте workflow. На метриках индивидуальных бюджетов отображаются до 100 последних активных историй; глобальные агрегаты охватывают весь журнал, в том числе явно помеченные mock-тесты.
+
+Retention Loki/Tempo — 48 часов; Prometheus — 48 часов/128 MB. Это политика хранения, **не жёсткая квота диска Loki/Tempo**. Память пяти сервисов ограничена суммарно 1216 MiB; фактические замеры — `docs/stage4-resources.json`. Ошибки экспорта не откатывают бизнес-транзакции; очереди ограничены, часть telemetry при длительном отказе может теряться. PostgreSQL остаётся источником usage и аудита.
+
+Отключение профиля без удаления данных:
+
+```sh
+docker compose --profile observability stop grafana prometheus loki tempo otel-collector
+# В .env очистить OTEL_EXPORTER_OTLP_ENDPOINT и GRAFANA_PUBLIC_URL, затем:
+docker compose up -d --no-deps --force-recreate api worker ui
+```
+
+JSON stdout остаётся включён. Volumes сохраняются. Повторный bootstrap снова включает локальный OTLP endpoint.
+
+`python3 scripts/run_stage4_checks.py` — отдельный локальный opt-in E2E, временно останавливает штатный worker и профиль для замера RAM. Создаёт только свои синтетические истории, запускает scoped mock worker и tokenless Git broker, проверяет реальные SQL/QA/Bug/BookStack, рестарт, privacy canaries, бюджетный alert и отказ Collector. В `finally` отменяет свои истории, удаляет только два тестовых контейнера и возвращает штатный worker. На время теста не создавайте новые истории. Денежные LLM-вызовы и GitHub PR в этом тесте отсутствуют. Отчёты `docs/stage4-*.json` отделены от предыдущего реального OpenRouter-прогона.
