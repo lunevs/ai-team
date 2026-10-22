@@ -59,6 +59,7 @@ x-runtime-env: &runtime-env
   LANGSMITH_TRACING: 'false'
 services:
   postgres:
+    networks: [backend, execution]
     logging: *logging
     image: postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
     restart: unless-stopped
@@ -69,7 +70,6 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
-    networks: [backend]
     mem_limit: 512m
     cpus: 1
     healthcheck:
@@ -218,7 +218,11 @@ services:
       LLM_STRUCTURED_MODE: ${LLM_STRUCTURED_MODE:-json_object}
       LLM_INPUT_USD_PER_MILLION: ${LLM_INPUT_USD_PER_MILLION:-1}
       LLM_OUTPUT_USD_PER_MILLION: ${LLM_OUTPUT_USD_PER_MILLION:-4}
-    networks: [backend, frontend]
+      SANDBOX_URL: http://sandbox:8000
+      SANDBOX_API_TOKEN: ${SANDBOX_API_TOKEN:-}
+      GIT_BROKER_URL: http://git-broker:8000
+      GIT_BROKER_API_TOKEN: ${GIT_BROKER_API_TOKEN:-}
+    networks: [backend, frontend, execution]
     stop_grace_period: 15s
     depends_on:
       migrate:
@@ -248,9 +252,27 @@ services:
       interval: 15s
       timeout: 6s
       retries: 10
+  sandbox:
+    <<: *app
+    command: [uvicorn, app.sandbox_service:app, --host, 0.0.0.0, --port, '8000', --no-access-log]
+    environment:
+      SANDBOX_DATABASE_URL: postgresql://ai_team_sandbox:${SANDBOX_DB_PASSWORD:-not-configured}@postgres/ai_team
+      SANDBOX_API_TOKEN: ${SANDBOX_API_TOKEN:-}
+    networks: [execution]
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
 networks:
   frontend:
   backend:
+    internal: true
+  execution:
     internal: true
 volumes:
   pgdata:

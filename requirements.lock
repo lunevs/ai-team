@@ -73,3 +73,5 @@ watchdog==6.0.0
 websockets==16.1.1
 xxhash==4.0.2
 zstandard==0.25.0
+
+pglast==8.7
