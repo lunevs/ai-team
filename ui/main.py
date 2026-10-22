@@ -75,29 +75,27 @@ if story['pm']:
     st.subheader('Цель и критерии приёмки')
     st.write(story['pm']['goal'])
     for criterion in story['pm']['acceptance_criteria']:st.write('• '+criterion)
-plan_column, team_column = st.columns([3, 2], gap='large')
-with plan_column:
-    if story['plan']:
-        st.subheader('Архитектура и план')
-        st.write(story['plan']['architecture'])
-        for epic in story['plan']['epics']:
-            with st.expander(epic['title'],expanded=True):
-                for task in epic['tasks']:
-                    st.write(f"**{task['title']}** · {task['role']}")
-                    st.write('Критерии: '+'; '.join(task['acceptance_criteria']))
-                    if task['depends_on']:st.caption('Зависит от: '+', '.join(task['depends_on']))
-    if story['status']=='PLAN_REVIEW':
-        st.info('Одобрение относится к показанной ревизии. На этапе 1 SQL ещё не выполняется.')
-        if st.button('Одобрить план',type='primary'):
-            if request('/stories/'+id+'/approve-plan','POST',{'revision':story['revision'],'plan_digest':story['plan_digest']}):st.rerun()
-    if story['status'] in ['BLOCKED','FAILED']:
-        with st.form('resume'):
-            answers=st.text_area('Ответы и уточнения (создадут новую ревизию плана)')
-            if st.form_submit_button('Продолжить'):
-                if request('/stories/'+id+'/resume','POST',{'answers':answers}):st.rerun()
-    if story['status']!='CANCELLED':
-        if st.button('Отменить историю'):
-            if request('/stories/'+id+'/cancel','POST',{}):st.rerun()
+if story['plan']:
+    st.subheader('Архитектура и план')
+    st.write(story['plan']['architecture'])
+    for epic in story['plan']['epics']:
+        with st.expander(epic['title'],expanded=True):
+            for task in epic['tasks']:
+                st.write(f"**{task['title']}** · {task['role']}")
+                st.write('Критерии: '+'; '.join(task['acceptance_criteria']))
+                if task['depends_on']:st.caption('Зависит от: '+', '.join(task['depends_on']))
+if story['status']=='PLAN_REVIEW':
+    st.info('Одобрение относится к показанной ревизии. На этапе 1 SQL ещё не выполняется.')
+    if st.button('Одобрить план',type='primary'):
+        if request('/stories/'+id+'/approve-plan','POST',{'revision':story['revision'],'plan_digest':story['plan_digest']}):st.rerun()
+if story['status'] in ['BLOCKED','FAILED']:
+    with st.form('resume'):
+        answers=st.text_area('Ответы и уточнения (создадут новую ревизию плана)')
+        if st.form_submit_button('Продолжить'):
+            if request('/stories/'+id+'/resume','POST',{'answers':answers}):st.rerun()
+if story['status']!='CANCELLED':
+    if st.button('Отменить историю'):
+        if request('/stories/'+id+'/cancel','POST',{}):st.rerun()
 with st.expander('Задачи и документация'):
     for link in story['links']:st.link_button(link['key'],link['url'])
 with st.expander('События'):
@@ -115,32 +113,32 @@ def team_panel(story_id):
         return
     if not data['tracker_available']:
         st.warning('Трекер недоступен: счётчики задач неполные. Результаты агентов сохранены.')
-    for agent in data['agents']:
-        with st.container(border=True):
-            st.markdown('**'+agent['name']+'**')
-            title=agent['current']
-            st.write(title if len(title)<=65 else title[:62]+'…')
-            if len(title)>65:
-                st.caption(title)
-            st.caption(f"Выполнено: {agent['completed']} · Осталось: {agent['remaining']}")
-            with st.popover('История задач',use_container_width=True):
+    with st.container(horizontal=True, wrap=True, gap='small'):
+        for agent in data['agents']:
+            with st.container(border=True, width=250):
                 st.markdown('**'+agent['name']+'**')
-                if not agent['history']:
-                    st.caption('Выполненных задач пока нет')
-                for item in agent['history']:
-                    st.write(item['title'])
-                    st.caption(f"Ревизия {item['revision']} · {item.get('completed_at') or 'Время не зафиксировано'}")
-                    if item.get('url'):
-                        st.link_button('Открыть задачу',item['url'])
-                if agent['tasks']:
-                    st.divider()
-                    st.markdown('**Назначенные задачи**')
-                    for task in agent['tasks']:
-                        st.write(task['title'])
-                        st.caption(task['status'])
-                        if task['url']:
-                            st.link_button('Открыть в трекере',task['url'])
+                title=agent['current']
+                st.write(title if len(title)<=65 else title[:62]+'…')
+                if len(title)>65:
+                    st.caption(title)
+                st.caption(f"Выполнено: {agent['completed']} · Осталось: {agent['remaining']}")
+                with st.popover('История задач',use_container_width=True):
+                    st.markdown('**'+agent['name']+'**')
+                    if not agent['history']:
+                        st.caption('Выполненных задач пока нет')
+                    for item in agent['history']:
+                        st.write(item['title'])
+                        st.caption(f"Ревизия {item['revision']} · {item.get('completed_at') or 'Время не зафиксировано'}")
+                        if item.get('url'):
+                            st.link_button('Открыть задачу',item['url'])
+                    if agent['tasks']:
+                        st.divider()
+                        st.markdown('**Назначенные задачи**')
+                        for task in agent['tasks']:
+                            st.write(task['title'])
+                            st.caption(task['status'])
+                            if task['url']:
+                                st.link_button('Открыть в трекере',task['url'])
     st.caption('Счётчики — текущая ревизия. История результатов планирования включает прошлые ревизии. Закрытые задачи подтверждаются OpenProject.')
 
-with team_column:
-    team_panel(id)
+team_panel(id)
