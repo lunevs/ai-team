@@ -104,3 +104,40 @@ class QAResult(StrictModel):
     checks: list[dict]
     defects: list[int]
     limitations: list[str]
+
+class SourceMapping(StrictModel):
+    target: Literal['balance','dpd30_balance','dpd90_balance','npl90_ratio','interest_income']
+    source: str = Field(min_length=5,max_length=500)
+    rule: str = Field(min_length=5,max_length=1000)
+
+class SourceSpecification(StrictModel):
+    grain: str = Field(min_length=10,max_length=1000)
+    mapping: list[SourceMapping] = Field(min_length=5,max_length=5)
+    data_quality_rules: list[str] = Field(min_length=2,max_length=10)
+    questions: list[str] = Field(default_factory=list,max_length=8)
+
+    @model_validator(mode='after')
+    def unique_targets(self):
+        if len({m.target for m in self.mapping})!=5:raise ValueError('Every target metric must be mapped once')
+        return self
+
+class MetricPassport(StrictModel):
+    currency: Literal['RUB'] = 'RUB'
+    money_scale: Literal[2] = 2
+    dpd30_threshold: Literal[30] = 30
+    dpd90_threshold: Literal[90] = 90
+    npl_definition: Literal['dpd >= 90'] = 'dpd >= 90'
+    snapshot: Literal['last_calendar_day'] = 'last_calendar_day'
+    missing_snapshot: Literal['NULL; no carry forward'] = 'NULL; no carry forward'
+    zero_denominator: Literal['NULL'] = 'NULL'
+    interest_income: Literal['sum of daily income within calendar month'] = 'sum of daily income within calendar month'
+    rounding: Literal['ROUND_HALF_UP'] = 'ROUND_HALF_UP'
+    ratio_scale: Literal[6] = 6
+
+class AnalyticsResult(StrictModel):
+    passport: MetricPassport
+    business_rules: list[str] = Field(min_length=3,max_length=12)
+    economic_checks: list[str] = Field(min_length=2,max_length=10)
+    user_stories: list[str] = Field(min_length=1,max_length=6)
+    assumptions: list[str] = Field(min_length=1,max_length=8)
+    questions: list[str] = Field(default_factory=list,max_length=8)

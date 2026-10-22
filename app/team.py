@@ -32,11 +32,20 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
                 card['completed'] += 1
         if not card['completed'] and not stopped:
             card['remaining'] += 1
+    for result in results:
+        if result['role'] in ['system_analyst_spec','financial_analyst_spec']:
+            role=result['role'].replace('_spec','')
+            cards[role]['history'].append({'title':'Аналитическая спецификация','revision':result['revision'],
+                'completed_at':completions.get((result['role'],result['revision'])),'url':None,'source':'agent'})
+            if result['revision']==story['revision']:cards[role]['completed']+=1
     for call in calls:
         if (call['revision'] == story['revision'] and call['state'] == 'reserved'
                 and worker_active and not stopped and call['role'] in PLANNING
-                and not cards[call['role']]['completed']):
+                and not any(r['role']==call['role'] and r['revision']==story['revision'] for r in results)):
             cards[call['role']]['current'] = PLANNING[call['role']]
+    for call in calls:
+        if call['role']=='financial_analyst' and call['state']=='reserved' and call['revision']==story['revision'] and worker_active and not stopped:
+            cards['financial_analyst']['current']='Проверяет паспорт метрик'
     prefix = f"r{story['revision']}:task:"
     by_key = {link['key']: link for link in links}
     for epic in (story.get('plan') or {}).get('epics', []):

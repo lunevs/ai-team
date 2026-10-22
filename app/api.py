@@ -40,10 +40,11 @@ def require_story(id):
     return row
 
 def public_story(row):
+    from app.analytics import get_run
     with db.connection() as conn:
         links=conn.execute('SELECT key,external_id,url FROM external_ids WHERE story_id=%s ORDER BY key',(row['id'],)).fetchall()
     main=next((x['external_id'] for x in links if x['key']=='main'),None)
-    return {k:row[k] for k in ['id','text','status','revision','pm','plan','plan_digest','approved','questions','trace_id','error_type','created_at','updated_at']} | {'story_id':row['id'],'openproject_work_package_id':main,'links':links,'usage':db.usage(row['id'])}
+    return {k:row[k] for k in ['id','text','status','revision','pm','plan','plan_digest','approved','questions','trace_id','error_type','created_at','updated_at']} | {'story_id':row['id'],'openproject_work_package_id':main,'links':links,'usage':db.usage(row['id']),'analytics':get_run(row['id'],row['revision'])}
 
 @app.post('/stories',status_code=201)
 def create(data:StoryInput,response:Response,idempotency_key:str=Header(min_length=8,max_length=128),user=Depends(current_user)):
@@ -78,6 +79,8 @@ def events(id:uuid.UUID,after:int=0,user=Depends(current_user)):
 @app.post('/stories/{id}/approve-plan')
 def approve(id:uuid.UUID,data:Approval,user=Depends(current_user)):
     initial=require_story(id)
+    from app.analytics import get_run
+    if get_run(id): raise db.Conflict('Используйте отдельное одобрение аналитической спецификации')
     if not initial['approved']:
         from app.integrations import tracker
         from app.config import settings
@@ -159,3 +162,53 @@ def team(id:uuid.UUID,user=Depends(current_user)):
         available=False
         log('team.tracker_unavailable',error_type=type(exc).__name__)
     return project_team(story,results,completions,calls,links,packages,available,bool(job))
+
+
+@app.get('/metadata/synthetic')
+def synthetic_metadata(user=Depends(current_user)):
+    from app.synthetic import metadata
+    with db.connection() as conn:
+        return metadata(conn)
+
+@app.post('/stories/{id}/analytics/start',status_code=202)
+def start_analytics(id:uuid.UUID,user=Depends(current_user)):
+    require_story(id)
+    with db.story_lock(id):
+        with db.connection() as conn:
+            story=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(id,)).fetchone()
+            if story['status'] in ['CANCELLED','BLOCKED','FAILED']:
+                raise db.Conflict('Сначала устраните блокировку или отмену')
+            existing=conn.execute('SELECT status FROM analytics_runs WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()
+            if existing:return {'status':existing['status']}
+            if not story['approved'] or story['status']!='IN_PROGRESS':
+                raise db.Conflict('Сначала одобрите текущий план')
+            conn.execute('INSERT INTO analytics_runs(story_id,revision) VALUES(%s,%s)',(id,story['revision']))
+            db.event(conn,story,'analytics.requested',{'actor':user},f"{id}:{story['revision']}:analytics-requested")
+            db.enqueue(conn,id)
+    return {'status':'REQUESTED'}
+
+@app.post('/stories/{id}/analytics/approve')
+def approve_analytics(id:uuid.UUID,data:Approval,user=Depends(current_user)):
+    from app.analytics import get_run
+    from app.integrations import tracker,sync_status
+    from app.config import settings
+    require_story(id)
+    with db.story_lock(id):
+        story=require_story(id);run=get_run(id)
+        if not run or data.revision!=story['revision'] or data.plan_digest!=run['digest']:
+            raise db.Conflict('Ревизия или digest аналитики изменились')
+        if run['status']=='APPROVED' and story['status']=='IN_PROGRESS':return {'status':'APPROVED'}
+        if run['status']!='REVIEW' or story['status']!='PLAN_REVIEW':raise db.Conflict('Спецификацию сейчас нельзя одобрить')
+        tracker.honor_remote_stop(id)
+        main=db.external(id,'main')
+        remote=tracker.request('/api/v3/work_packages/'+str(main['external_id']),role='pm')
+        if remote['_links']['status']['href']!=f"/api/v3/statuses/{settings.status_ids['PLAN_REVIEW']}":
+            raise db.Conflict('Статус в трекере изменился')
+        with db.connection() as conn:
+            story=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(id,)).fetchone()
+            if story['status']!='PLAN_REVIEW' or story['revision']!=data.revision:raise db.Conflict('История изменилась')
+            conn.execute("UPDATE analytics_runs SET status='APPROVED',approved_by=%s,approved_at=now() WHERE story_id=%s AND revision=%s",(user,id,data.revision))
+            db.event(conn,story,'analytics.approved',{'actor':user,'digest':data.plan_digest,'sql_executed':False},f'{id}:{data.revision}:analytics-approved')
+            conn.execute("UPDATE stories SET status='IN_PROGRESS',updated_at=now() WHERE id=%s",(id,))
+            conn.execute('INSERT INTO status_outbox(story_id) VALUES(%s) ON CONFLICT DO NOTHING',(id,))
+    return {'status':'APPROVED'}

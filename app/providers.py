@@ -6,7 +6,7 @@ import httpx
 from psycopg.types.json import Jsonb
 from app.config import settings
 from app import db
-from app.schemas import PMResult, SAResult
+from app.schemas import PMResult, SAResult, SourceSpecification, AnalyticsResult, MetricPassport
 from app.observability import tracer,log
 
 class LLMProvider(Protocol):
@@ -59,6 +59,24 @@ class MockProvider:
         context=json.loads(prompt)
         if schema is PMResult:
             result=PMResult(goal='Создать проверяемую витрину анализа кредитного портфеля',acceptance_criteria=['Согласовать метрики и правила агрегации','Проверить расчёты на синтетических данных'],priorities=['Определения метрик','Данные и проверки'],questions=['Как выбирать срез конца месяца?'] if '[уточнить]' in context['story'] and not context['answers'] else [])
+        elif schema is SourceSpecification:
+            result=SourceSpecification(grain='month × product_id × region; январь–июнь 2026',mapping=[
+                {'target':key,'source':'synthetic.fact_loan_daily + fact_loan + dim_customer',
+                 'rule':rule} for key,rule in [
+                    ('balance','sum(outstanding_balance) strictly on last calendar day'),
+                    ('dpd30_balance','sum month-end balance where dpd >= 30'),
+                    ('dpd90_balance','sum month-end balance where dpd >= 90'),
+                    ('npl90_ratio','dpd90_balance / balance; NULL if zero or missing'),
+                    ('interest_income','sum daily interest_income for calendar month')]],
+                data_quality_rules=['Пропуски не переносить, неполное покрытие отмечать','Остатки неотрицательны; внешние ключи существуют'])
+        elif schema is AnalyticsResult:
+            result=AnalyticsResult(passport=MetricPassport(),business_rules=[
+                'DPD30+ включает dpd >= 30; DPD90+ включает dpd >= 90',
+                'Month-end строго последний календарный день; пропуски не переносить',
+                'Процентный доход суммируется за календарный месяц'],
+                economic_checks=['0 <= npl90_ratio <= 1 либо NULL','balance >= dpd30_balance >= dpd90_balance >= 0'],
+                user_stories=['Как финансовый аналитик хочу сверять кредитный портфель с независимым эталоном'],
+                assumptions=['Определения действуют только для синтетической демонстрации'])
         else:
             result=SAResult(architecture='PostgreSQL хранит синтетические источники и витрины; расчёты выполняются только в sandbox после одобрения плана, QA использует независимые эталоны.',epics=[{'key':'portfolio','title':'Витрина кредитного портфеля','tasks':[
               {'key':'metrics','title':'Определить паспорт банковских метрик','role':'financial_analyst','acceptance_criteria':['Определены DPD и month-end'],'depends_on':[]},
@@ -69,10 +87,11 @@ class MockProvider:
     def generate_text(self,prompt): raise CapabilityError()
     def tool_call(self,*args,**kwargs): raise CapabilityError()
 
-def generate(story_id,role,schema,context):
+def generate(story_id,role,schema,context,result_role=None):
+    result_role=result_role or role
     story=db.active(story_id)
     with db.connection() as conn:
-        cached=conn.execute('SELECT result FROM agent_results WHERE story_id=%s AND revision=%s AND role=%s',(story_id,story['revision'],role)).fetchone()
+        cached=conn.execute('SELECT result FROM agent_results WHERE story_id=%s AND revision=%s AND role=%s',(story_id,story['revision'],result_role)).fetchone()
     if cached: return schema.model_validate(cached['result'])
     provider=MockProvider() if settings.backend=='mock' else OpenRouterProvider() if settings.backend=='openrouter' else None
     if provider is None: raise CapabilityError()
@@ -95,8 +114,8 @@ def generate(story_id,role,schema,context):
             conn.execute("UPDATE llm_calls SET state='completed',actual_tokens=%s,actual_cost=%s,latency_ms=%s WHERE id=%s",(actual_tokens,actual_cost,int((time.monotonic()-started)*1000),call_id))
             row=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(story_id,)).fetchone()
             if row['status']=='CANCELLED': raise db.Cancelled()
-            conn.execute('INSERT INTO agent_results VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING',(story_id,story['revision'],role,Jsonb(parsed.model_dump(mode='json'))))
-            db.event(conn,row,'agent.completed',{'role':role,'backend':settings.backend},f"{story_id}:{story['revision']}:{role}:completed")
+            conn.execute('INSERT INTO agent_results VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING',(story_id,story['revision'],result_role,Jsonb(parsed.model_dump(mode='json'))))
+            db.event(conn,row,'agent.completed',{'role':role,'backend':settings.backend},f"{story_id}:{story['revision']}:{result_role}:completed")
         return parsed
     except Exception as exc:
         with db.connection() as conn:
