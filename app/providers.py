@@ -7,7 +7,7 @@ from psycopg.types.json import Jsonb
 from app.config import settings
 from app import db
 from app.schemas import PMResult, SAResult, SourceSpecification, AnalyticsResult, MetricPassport, SQLArtifact, SQLReview
-from app.observability import tracer,log
+from app.observability import tracer,log,metadata
 
 class LLMProvider(Protocol):
     def generate_structured(self, role, prompt, schema): ...
@@ -108,6 +108,10 @@ class MockProvider:
     def tool_call(self,*args,**kwargs): raise CapabilityError()
 
 def generate(story_id,role,schema,context,result_role=None):
+    with tracer.start_as_current_span('agent.'+role,attributes={'story_id':str(story_id),'role':role,'backend':settings.backend,'model':settings.model}):
+        return _generate(story_id,role,schema,context,result_role)
+
+def _generate(story_id,role,schema,context,result_role=None):
     result_role=result_role or role
     story=db.active(story_id)
     with db.connection() as conn:
@@ -124,8 +128,9 @@ def generate(story_id,role,schema,context,result_role=None):
     call_id=db.reserve_call(story_id,role,reserved_tokens,reserved_cost)
     started=time.monotonic()
     try:
-        with tracer.start_as_current_span('llm.request',attributes={'story_id':str(story_id),'role':role,'model':settings.model}):
+        with tracer.start_as_current_span('llm.request',attributes={'story_id':str(story_id),'role':role,'model':settings.model,'backend':settings.backend}) as span:
             parsed,usage=provider.generate_structured(role,prompt,schema)
+            span.set_attributes(metadata({'tokens':usage.get('total_tokens'),'estimated_cost_usd':usage.get('cost')}))
         actual_tokens=usage.get('total_tokens')
         actual_cost=usage.get('cost')
         if actual_cost is None and 'prompt_tokens' in usage and 'completion_tokens' in usage:
@@ -136,6 +141,8 @@ def generate(story_id,role,schema,context,result_role=None):
             if row['status']=='CANCELLED': raise db.Cancelled()
             conn.execute('INSERT INTO agent_results VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING',(story_id,story['revision'],result_role,Jsonb(parsed.model_dump(mode='json'))))
             db.event(conn,row,'agent.completed',{'role':role,'backend':settings.backend},f"{story_id}:{story['revision']}:{result_role}:completed")
+        log('llm.completed',story_id=str(story_id),role=role,backend=settings.backend,model=settings.model,
+            tokens=actual_tokens,estimated_cost_usd=actual_cost if actual_cost is not None else reserved_cost)
         return parsed
     except Exception as exc:
         with db.connection() as conn:

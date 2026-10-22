@@ -9,6 +9,8 @@ from app.providers import generate
 from app.schemas import SQLArtifact,SQLReview
 from app.synthetic import metadata
 from app.qa import check_rows
+from app.observability import tracer,log
+from opentelemetry.trace import Status,StatusCode
 from app.integrations import tracker,knowledge,sync_status,ensure_main,RetryableIntegrationError
 
 
@@ -33,6 +35,13 @@ def event(story,type_,payload,key):
 
 
 def sandbox_call(run,attempt,query):
+    with tracer.start_as_current_span('tool.sql',attributes={'story_id':str(run['story_id']),'attempt':attempt}) as span:
+        result=_sandbox_call(run,attempt,query)
+        if 'execution_error' in result:
+            span.set_status(Status(StatusCode.ERROR));span.set_attribute('error_type','SQLRejected')
+        return result
+
+def _sandbox_call(run,attempt,query):
     try:
         with httpx.Client(timeout=15) as client:
             r=client.post(os.getenv('SANDBOX_URL','http://sandbox:8000')+'/execute',headers={'Authorization':'Bearer '+os.getenv('SANDBOX_API_TOKEN','')},
@@ -86,7 +95,11 @@ def run(story_id):
             db.active(story_id);tracker.honor_remote_stop(story_id)
             update(record['id'],status='QA',sql_text=artifact_query)
             result=sandbox_call(record,attempt,artifact_query)
-            qa=check_rows(result['rows']) if 'execution_error' not in result else {'passed':False,'failures':[{'check':'SQL_execution','detail':result['execution_error']}],'expected_rows':24,'actual_rows':0}
+            with tracer.start_as_current_span('agent.qa',attributes={'story_id':str(story_id),'role':'qa','backend':'deterministic','attempt':attempt}) as qa_span:
+                qa=check_rows(result['rows']) if 'execution_error' not in result else {'passed':False,'failures':[{'check':'SQL_execution','detail':result['execution_error']}],'expected_rows':24,'actual_rows':0}
+                qa_span.set_attribute('passed',qa['passed'])
+                if not qa['passed']:qa_span.set_status(Status(StatusCode.ERROR))
+                log('qa.completed',story_id=str(story_id),role='qa',passed=qa['passed'],attempt=attempt,backend='deterministic')
             with db.connection() as conn:
                 conn.execute('INSERT INTO execution_attempts(run_id,attempt,sql_text,result,qa) VALUES(%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING',
                     (record['id'],attempt,artifact_query,Jsonb(result),Jsonb(qa)))

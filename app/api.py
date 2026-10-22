@@ -11,7 +11,33 @@ from app.observability import log
 async def lifespan(app):
     yield
 
-app=FastAPI(title='Bank AI Delivery Team',version='0.2.0',lifespan=lifespan)
+app=FastAPI(title='Bank AI Delivery Team',version='0.5.0',lifespan=lifespan)
+
+@app.middleware('http')
+async def trace_story_mutation(request,call_next):
+    import asyncio,hmac
+    from app.config import settings
+    from app.observability import story_trace
+    from opentelemetry.trace import Status,StatusCode
+    parts=request.url.path.strip('/').split('/')
+    if request.method=='POST' and len(parts)>=2 and parts[0]=='stories' and settings.api_token and hmac.compare_digest(request.headers.get('Authorization',''),'Bearer '+settings.api_token):
+        try:id=uuid.UUID(parts[1])
+        except ValueError:return await call_next(request)
+        story=await asyncio.to_thread(db.get_story,id)
+        if story:
+            with story_trace(story,'api') as span:
+                response=await call_next(request)
+                if response.status_code>=400:
+                    span.set_status(Status(StatusCode.ERROR));span.set_attribute('error_type','HTTPRejected')
+                return response
+    return await call_next(request)
+
+from app.metrics import authenticate as metrics_auth
+
+@app.get('/metrics',include_in_schema=False)
+def telemetry_metrics(user=Depends(metrics_auth)):
+    from app.metrics import snapshot,render
+    return Response(render(snapshot()),media_type='text/plain; version=0.0.4')
 
 @app.exception_handler(db.Conflict)
 def conflict_handler(request,exc):

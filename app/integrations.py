@@ -100,6 +100,10 @@ class RemoteBlocked(Exception): pass
 
 class BookStack:
     def request(self,path,method='GET',data=None):
+        with tracer.start_as_current_span('tool.knowledge'):
+            return self._request(path,method,data)
+
+    def _request(self,path,method='GET',data=None):
         if not path.startswith('/') or '://' in path: raise IntegrationError()
         try:
             with httpx.Client(timeout=20) as client:

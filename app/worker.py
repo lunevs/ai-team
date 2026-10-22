@@ -16,6 +16,8 @@ from app.observability import log,tracer
 stopping=threading.Event()
 owner=str(uuid.uuid4())
 current=[None]
+scope=[uuid.UUID(value) for value in os.getenv('WORKER_STORY_IDS','').split(',') if value] or None
+if scope and len(scope)>10:raise ValueError('Worker scope is limited to ten stories')
 
 def heartbeat():
     while not stopping.is_set():
@@ -30,8 +32,9 @@ def heartbeat():
 
 def claim():
     with db.connection() as conn:
-        job=conn.execute("""SELECT * FROM jobs WHERE (state='ready' AND available_at<=now()) OR
-            (state='running' AND lease_until<now()) ORDER BY available_at FOR UPDATE SKIP LOCKED LIMIT 1""").fetchone()
+        job=conn.execute("""SELECT * FROM jobs WHERE ((state='ready' AND available_at<=now()) OR
+            (state='running' AND lease_until<now())) AND (%s::uuid[] IS NULL OR story_id=ANY(%s::uuid[]))
+            ORDER BY available_at FOR UPDATE SKIP LOCKED LIMIT 1""",(scope,scope)).fetchone()
         if job:
             conn.execute("UPDATE jobs SET state='running',owner=%s,lease_until=now()+interval '30 seconds',attempts=attempts+1 WHERE story_id=%s",(owner,job['story_id']))
         return job
@@ -48,6 +51,7 @@ def execute(job):
                 conn.execute("UPDATE jobs SET state='ready',available_at=now()+interval '2 seconds',lease_until=NULL WHERE story_id=%s AND owner=%s",(id,owner))
             return
         current[0]=id
+        trace_id=None
         try:
             with db.connection() as checkpoint_conn:
                 checkpoint_conn.autocommit=True
@@ -56,8 +60,8 @@ def execute(job):
                 parent=trace.NonRecordingSpan(trace.SpanContext(trace_id,uuid.uuid4().int & ((1<<64)-1),is_remote=True,trace_flags=trace.TraceFlags(1)))
                 with tracer.start_as_current_span('story.run',context=trace.set_span_in_context(parent),attributes={'story_id':str(id)}):
                     run_story(id,saver)
+                    log('story.checkpoint',story_id=str(id),status=db.get_story(id)['status'])
             finish(id,'waiting' if db.get_story(id)['status'] in ['PLAN_REVIEW','BLOCKED'] else 'done')
-            log('story.checkpoint',story_id=str(id),status=db.get_story(id)['status'])
         except db.Cancelled:
             # A cancellation may arrive while an HTTP request is in flight.
             # Enqueued cancellation sync is kept if API reset the owner.
@@ -72,10 +76,12 @@ def execute(job):
                     conn.execute("UPDATE jobs SET state='ready',available_at=now()+(%s*interval '1 second'),lease_until=NULL WHERE story_id=%s AND owner=%s",(min(2**job['attempts'],20),id,owner))
                     row=db.get_story(id,conn)
                     db.event(conn,row,'worker.retry',{'error_type':type(exc).__name__,'attempt':job['attempts']+1})
+                    log('worker.retry',story_id=str(id),trace_id=row['trace_id'],error_type=type(exc).__name__,attempt=job['attempts']+1)
         except db.BudgetExceeded:
+            log('budget.exhausted',story_id=str(id),trace_id=f'{trace_id:032x}' if trace_id else None,error_type='BudgetExceeded')
             fail(id,'BLOCKED','BudgetExceeded')
         except Exception as exc:
-            log('story.failed',story_id=str(id),error_type=type(exc).__name__)
+            log('story.failed',story_id=str(id),trace_id=f'{trace_id:032x}' if trace_id else None,error_type=type(exc).__name__)
             fail(id,'FAILED',type(exc).__name__)
         finally:
             current[0]=None
@@ -127,7 +133,8 @@ def watch_remote_stops():
             with db.connection() as conn:
                 rows=conn.execute("""SELECT s.id FROM stories s JOIN jobs j ON j.story_id=s.id
                   WHERE s.status NOT IN ('NEW','CANCELLED','DONE')
-                  AND j.state IN ('waiting','done','failed') ORDER BY s.updated_at LIMIT 100""").fetchall()
+                  AND j.state IN ('waiting','done','failed') AND (%s::uuid[] IS NULL OR s.id=ANY(%s::uuid[]))
+                  ORDER BY s.updated_at LIMIT 100""",(scope,scope)).fetchall()
             for row in rows:
                 if stopping.is_set(): break
                 with db.story_lock(row['id'],blocking=False) as acquired:
