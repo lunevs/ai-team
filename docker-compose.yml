@@ -48,6 +48,7 @@ x-app: &app
   cpus: 1
   mem_limit: 512m
 x-runtime-env: &runtime-env
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
   DATABASE_URL: postgresql://ai_team_runtime:${APP_RUNTIME_DB_PASSWORD:-not-configured}@postgres/ai_team
   OPENPROJECT_URL: http://openproject:8080
   OPENPROJECT_PUBLIC_URL: http://localhost:8080
@@ -57,6 +58,18 @@ x-runtime-env: &runtime-env
   AGENT_USER_IDS: ${AGENT_USER_IDS:-}
   LANGCHAIN_TRACING_V2: 'false'
   LANGSMITH_TRACING: 'false'
+x-observer: &observer
+  profiles: [observability]
+  restart: unless-stopped
+  logging: *logging
+  networks: [observability]
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  pids_limit: 128
+  cpus: 0.5
+  mem_limit: 256m
 services:
   postgres:
     networks: [backend, execution]
@@ -190,9 +203,11 @@ services:
     environment:
       <<: *runtime-env
       APP_API_TOKEN: ${APP_API_TOKEN:-}
+      OTEL_SERVICE_NAME: ai-team-api
+      TELEMETRY_METRICS_TOKEN: ${TELEMETRY_METRICS_TOKEN:-}
       GIT_BROKER_URL: http://git-broker:8000
       GIT_BROKER_API_TOKEN: ${GIT_BROKER_API_TOKEN:-}
-    networks: [backend, frontend, git-internal]
+    networks: [backend, frontend, git-internal, observability]
     ports: ['127.0.0.1:8000:8000']
     depends_on:
       migrate:
@@ -209,6 +224,7 @@ services:
     command: [python, -m, app.worker]
     environment:
       <<: *runtime-env
+      OTEL_SERVICE_NAME: ai-team-worker
       OPENPROJECT_SA_TOKEN: ${OPENPROJECT_SA_TOKEN:-}
       BOOKSTACK_URL: http://bookstack
       BOOKSTACK_PUBLIC_URL: http://localhost:8082
@@ -226,7 +242,7 @@ services:
       SANDBOX_API_TOKEN: ${SANDBOX_API_TOKEN:-}
       GIT_BROKER_URL: http://git-broker:8000
       GIT_BROKER_API_TOKEN: ${GIT_BROKER_API_TOKEN:-}
-    networks: [backend, frontend, execution, git-internal]
+    networks: [backend, frontend, execution, git-internal, observability]
     stop_grace_period: 15s
     depends_on:
       migrate:
@@ -288,7 +304,85 @@ services:
       timeout: 3s
       retries: 5
 
+  otel-collector:
+    <<: *observer
+    image: otel/opentelemetry-collector-contrib:0.163.2@sha256:7f22d2a6748110ffb6a59bc0df448bccbf501cdb667d610ede4c61d3863d5849
+    user: '10001:10001'
+    command: [--config=/etc/otelcol/config.yaml]
+    environment:
+      GOMEMLIMIT: 96MiB
+    volumes: [./infra/observability/collector.yaml:/etc/otelcol/config.yaml:ro]
+    mem_limit: 128m
+  loki:
+    <<: *observer
+    image: grafana/loki:3.7.9@sha256:0db216b630ae1f348a1584c67f3cead8b4c1fc839169a39501db664744158e28
+    user: '10001:10001'
+    command: [-config.file=/etc/loki/config.yaml]
+    environment:
+      GOMEMLIMIT: 320MiB
+    volumes:
+      - ./infra/observability/loki.yaml:/etc/loki/config.yaml:ro
+      - loki_data:/loki
+    mem_limit: 384m
+  tempo:
+    <<: *observer
+    image: grafana/tempo:2.10.10@sha256:12b0820f13ffa10ce956b6e9acc3b03f3cffded99109be6cc09d106fe56e5d38
+    user: '10001:10001'
+    command: [-config.file=/etc/tempo/config.yaml]
+    environment:
+      GOMEMLIMIT: 192MiB
+    volumes:
+      - ./infra/observability/tempo.yaml:/etc/tempo/config.yaml:ro
+      - tempo_data:/var/tempo
+  prometheus:
+    <<: *observer
+    image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
+    user: '65534:65534'
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - >-
+        test -n "$$TELEMETRY_METRICS_TOKEN";
+        umask 077;
+        printf '%s' "$$TELEMETRY_METRICS_TOKEN" > /tmp/metrics-token;
+        exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yaml
+        --storage.tsdb.path=/prometheus --storage.tsdb.retention.time=48h
+        --storage.tsdb.retention.size=128MB --query.max-concurrency=4 --query.timeout=5s
+        --log.level=error
+    environment:
+      TELEMETRY_METRICS_TOKEN: ${TELEMETRY_METRICS_TOKEN:-}
+      GOMEMLIMIT: 144MiB
+    volumes:
+      - ./infra/observability/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - ./infra/observability/alerts.yaml:/etc/prometheus/alerts.yaml:ro
+      - prometheus_data:/prometheus
+    mem_limit: 192m
+  grafana:
+    <<: *observer
+    image: grafana/grafana:13.2.4@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
+    user: '472:472'
+    entrypoint: [/bin/sh, -ec]
+    command: ['test -n "$$GF_SECURITY_ADMIN_PASSWORD"; exec /run.sh']
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: 'false'
+      GF_NEWS_NEWS_FEED_ENABLED: 'false'
+      GF_LOG_LEVEL: error
+      GOMEMLIMIT: 192MiB
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/observability/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/ai-team.yaml:ro
+      - ./infra/observability/grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/ai-team.yaml:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ['127.0.0.1:3000:3000']
+
 networks:
+  observability:
+    internal: true
   frontend:
   backend:
     internal: true
@@ -297,6 +391,10 @@ networks:
   git-internal:
     internal: true
 volumes:
+  grafana_data:
+  loki_data:
+  tempo_data:
+  prometheus_data:
   pgdata:
   opdata:
   bookstack_db:

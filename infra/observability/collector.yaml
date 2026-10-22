@@ -1,0 +1,74 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        max_request_body_size: 1048576
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 96
+    spike_limit_mib: 16
+  transform/metadata:
+    error_mode: propagate
+    trace_statements:
+      - context: resource
+        statements:
+          - keep_keys(attributes, ["service.name", "service.version", "deployment.environment.name"])
+      - context: span
+        statements:
+          - keep_keys(attributes, ["story_id", "role", "model", "backend", "stage", "latency_ms", "tokens", "estimated_cost_usd", "status", "error_type", "attempt", "passed", "revision"])
+    log_statements:
+      - context: resource
+        statements:
+          - keep_keys(attributes, ["service.name", "service.version", "deployment.environment.name"])
+      - context: log
+        statements:
+          - keep_keys(attributes, ["story_id", "trace_id", "role", "stage", "status", "error_type"])
+  batch:
+    timeout: 1s
+    send_batch_size: 64
+    send_batch_max_size: 128
+exporters:
+  otlp_http/tempo:
+    endpoint: http://tempo:4318
+    timeout: 3s
+    sending_queue:
+      queue_size: 256
+    retry_on_failure:
+      initial_interval: 1s
+      max_interval: 5s
+      max_elapsed_time: 15s
+  otlp_http/loki:
+    endpoint: http://loki:3100/otlp
+    timeout: 3s
+    sending_queue:
+      queue_size: 256
+    retry_on_failure:
+      initial_interval: 1s
+      max_interval: 5s
+      max_elapsed_time: 15s
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: error
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/metadata, batch]
+      exporters: [otlp_http/tempo]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/metadata, batch]
+      exporters: [otlp_http/loki]
