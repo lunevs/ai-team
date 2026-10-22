@@ -1,0 +1,17 @@
+{
+  "checks": [
+    "denied: DELETE FROM synthetic.fact_loan_daily",
+    "denied: UPDATE synthetic.fact_loan_daily SET dpd=0",
+    "denied: CREATE TABLE public.forbidden(id int)",
+    "denied: SELECT * FROM public.stories",
+    "denied: SELECT * FROM pg_authid",
+    "sandbox has no application/integration credentials or Docker socket",
+    "sandbox external egress unavailable",
+    "sandbox cannot resolve isolated Git broker",
+    "worker has neither sandbox DB login nor GitHub token",
+    "AST denies DDL, system/file/sleep functions, private tables and multiple statements",
+    "1000-row result cap enforced",
+    "expensive allowed SELECT cancelled by database statement timeout"
+  ],
+  "passed": true
+}

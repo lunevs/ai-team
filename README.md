@@ -201,3 +201,42 @@ API: `GET /metadata/synthetic`, `POST /stories/{id}/analytics/start`, `/analytic
 Проверки: `python -m pytest -q tests/unit tests/integration` в worker-контейнере с остановленной очередью; `scripts/run_stage2_checks.py` запускается с отдельным mock worker на реальных сервисах и перезапускает только контейнер `ai-team-stage2-mock`. Он создаёт собственные тестовые истории, не одобряет пользовательские. Отчёты — `docs/stage2-check.json` и `docs/stage2-openrouter-check.json`.
 
 Для структурированных контрактов OpenRouter по умолчанию используется `LLM_REASONING_MODE=disabled` (`reasoning.enabled=false`); `default` оставляет поведение провайдера. Финансовый контракт резервирует до 8192 output tokens, остальные — 4096. Пустой/невалидный final content не считается результатом, его usage учитывается, если провайдер его сообщил.
+
+### Этап 3: SQL, QA, дашборд и выпуск
+
+После одобрения аналитики нажмите «Запустить реализацию и QA». Developer создаёт SELECT; отдельный sandbox исполняет его в PostgreSQL. QA сверяет 24 среза с независимым Decimal-эталоном, а системный аналитик проверяет SQL. При дефекте создаётся Bug в OpenProject; допускаются две попытки исправления. Все вызовы входят в общий бюджет истории. Поддержан фиксированный демонстрационный контракт `credit-demo-v1`; произвольные ETL/Python и миграции от модели не исполняются.
+
+Дашборд показывает фильтры продукта/региона, остаток и NPL выбранного месяца, динамику и отдельный контроль покрытия источников. Excel содержит формулы, данные SQL и контроль качества, checksum и SQL digest. Пропуск отличается от нуля, месячные остатки не складываются между месяцами. Скачивания требуют авторизации; volume доступен worker для записи и API для чтения. После формирования файлы проверяются по сохранённым SHA256 и не заменяются при повторе публикации.
+
+Первичная настройка sandbox оператором:
+
+```sh
+docker compose build migrate
+docker compose run --rm --no-deps migrate
+python3 scripts/bootstrap_sandbox.py
+docker compose up -d sandbox git-broker api worker ui
+```
+
+Sandbox использует отдельную роль без DDL в источниках/public, внутреннюю сеть без внешнего выхода, таймаут SQL 5 секунд и лимит 1000 строк. Worker не получает sandbox DB login, а sandbox не получает LLM/GitHub/трекер credentials. Контейнеры работают без root, с readonly rootfs и без Docker socket.
+
+В локальный `.env` добавляется `GITHUB_RUNTIME_TOKEN` — fine-grained token только для `lunevs/ai-team`: Contents/Pull requests read-write, Metadata/Checks/Commit statuses read-only. Затем `docker compose up -d --no-deps --force-recreate git-broker`. Токен не передаётся worker/API/моделям; не вставляйте его в чат. `GITHUB_BASE_REF` по умолчанию `release/188`: перед использованием полного runtime необходимо слить PR реализации в эту ветку. Операторский GitHub credential не используется runtime. Без токена расчёт доступен, статус доставки — `WAITING_GITHUB`.
+
+Broker создаёт `feature/<task>` и PR в `release/<epic>`; commit фиксируется после QA, force-push/автослияния нет. Для приёмки нужны независимое GitHub review другим аккаунтом, успешные `application`/`validate` и слияние task PR. Автор PR не может одобрить собственный PR, даже с другим токеном того же пользователя. После явной приёмки создаются release PR в main (`RELEASE_REVIEW`). После их независимого review/CI/ручного merge кнопка проверки выпуска создаёт тег по реальному merge commit и переводит задачи/эпики и историю в DONE. Объекты версий OpenProject создаются оператором, runtime-права не расширяются.
+
+API: `POST /stories/{id}/execution/start`, `/retry`, `/gate`, `/accept` (revision + analytics digest в `plan_digest`), `/finalize-release`; `GET /stories/{id}/execution/artifacts/{name}`. `GET /stories/{id}` включает execution, QA, review, реальные PR и манифест файлов. После старта SQL критерии меняются через отмену и новую историю.
+
+Проверки: `tests/unit` и `tests/integration`; host-скрипт `scripts/run_stage3_checks.py` требует отдельный worker `ai-team-stage3-mock` с `LLM_BACKEND=mock` и остановленный штатный worker. Он создаёт и отменяет собственные истории, проверяет исправления, скачивания, рестарт и отсутствие ложной приёмки. `scripts/run_stage3_security_checks.py` проверяет действительные права/сеть/лимиты внутри ограниченных сервисов. Отчёты: `docs/stage3-*.json`; реальный LLM и mock отмечены раздельно. Положительный выпуск с настоящим GitHub требует сервисного токена, независимого review и ручных merge.
+
+Mock E2E требует отдельный broker без GitHub-токена, чтобы тестовые истории не публиковались в репозиторий:
+
+```sh
+docker compose stop worker
+docker compose run -d --no-deps --name ai-team-stage3-git-mock -e GITHUB_RUNTIME_TOKEN= git-broker
+docker compose run -d --no-deps --name ai-team-stage3-mock -e LLM_BACKEND=mock -e GIT_BROKER_URL=http://ai-team-stage3-git-mock:8000 worker
+python3 scripts/run_stage3_checks.py
+# Выполнить очистку и вернуть штатный worker также при ошибке теста:
+docker rm -f ai-team-stage3-mock ai-team-stage3-git-mock
+docker compose start worker
+```
+
+Служебная реальная история №219 прошла создание шести PR #22–27 в release/221 и release/226 от тестовой feature/193. Повтор вернул тот же commit/PR; CI успешен, независимое review и merge ожидаются. Штатная база остаётся release/188. Подробности — `docs/stage3-github-check.json`. PR реализации #17–21 и PR результатов #22–27 имеют разное назначение.

@@ -258,9 +258,10 @@ def retry_execution(id:uuid.UUID,user=Depends(current_user)):
         with db.connection() as conn:
             story=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(id,)).fetchone()
             record=conn.execute('SELECT * FROM execution_runs WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()
-            if not record or record['status'] not in ['WAITING_GITHUB','READY_TO_PUBLISH','PUBLISHED'] or story['status']=='CANCELLED':
+            if not record or record['status'] not in ['WAITING_GITHUB','READY_TO_PUBLISH','PUBLISHED','BUSINESS_ACCEPTED','FINALIZING_RELEASE'] or story['status']=='CANCELLED':
                 raise db.Conflict('Повтор публикации сейчас недоступен')
-            conn.execute("UPDATE stories SET status='IN_PROGRESS',error_type=NULL WHERE id=%s",(id,))
+            status='ACCEPTANCE' if record['status'] in ['BUSINESS_ACCEPTED','FINALIZING_RELEASE'] else 'IN_PROGRESS'
+            conn.execute('UPDATE stories SET status=%s,error_type=NULL WHERE id=%s',(status,id))
             db.enqueue(conn,id)
     return {'status':'QUEUED'}
 
@@ -301,3 +302,16 @@ def accept_execution(id:uuid.UUID,data:Approval,user=Depends(current_user)):
             db.event(conn,story,'execution.business_accepted',{'actor':user,'gate':gate},f"{record['id']}:business-accepted")
             db.enqueue(conn,id)
     return {'status':'BUSINESS_ACCEPTED'}
+
+@app.post('/stories/{id}/execution/finalize-release',status_code=202)
+def finalize_execution_release(id:uuid.UUID,user=Depends(current_user)):
+    require_story(id)
+    with db.story_lock(id):
+        story=db.active(id)
+        with db.connection() as conn:
+            record=conn.execute('SELECT * FROM execution_runs WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()
+            if not record or record['status'] not in ['RELEASE_REVIEW','FINALIZING_RELEASE']:raise db.Conflict('Релиз пока недоступен')
+            conn.execute("UPDATE execution_runs SET status='FINALIZING_RELEASE' WHERE id=%s",(record['id'],))
+            db.event(conn,story,'execution.release_finalization_requested',{'actor':user})
+            db.enqueue(conn,id)
+    return {'status':'FINALIZING_RELEASE'}

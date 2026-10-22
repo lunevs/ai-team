@@ -42,12 +42,15 @@ with st.sidebar:
             result=request('/stories','POST',{'text':text,'synthetic_only':True},st.session_state['request_key'])
             if result:
                 st.session_state['story_id']=result['story_id']
+                st.session_state['selected_story']=result['story_id']
                 st.success('История сохранена')
     stories=request('/stories') or []
     if stories:
         ids=[s['id'] for s in stories]
         labels={s['id']:f"{s['status']} · {s['text'][:65]}" for s in stories}
-        selected=st.selectbox('Истории',ids,index=ids.index(st.session_state['story_id']) if st.session_state.get('story_id') in ids else 0,format_func=labels.get)
+        if st.session_state.get('selected_story') not in ids:
+            st.session_state['selected_story']=st.session_state.get('story_id') if st.session_state.get('story_id') in ids else ids[0]
+        selected=st.selectbox('Истории',ids,key='selected_story',format_func=labels.get)
         st.session_state['story_id']=selected
     st.button('Обновить')
 
@@ -199,6 +202,10 @@ else:
         st.caption('Остатки — на последний календарный день месяца. Доход — сумма за месяц. NPL рассчитан из суммарных остатков. Пропуски сохраняются.')
         with st.expander('Детализация витрины'):
             st.dataframe(filtered,hide_index=True,use_container_width=True)
+        with st.expander('Качество источников: покрытие month-end'):
+            st.caption('Независимый контроль по источникам: кредиты с данными месяца без последнего календарного снимка. Это отдельный DQ-индикатор, не денежная метрика SQL-витрины.')
+            coverage=[{k:r[k] for k in ['month','product_id','region','source_row_count','snapshot_loan_count','missing_snapshot_loans']} for r in (analytics or {}).get('reference_rows',[]) if str(r['product_id']) in products and r['region'] in regions]
+            st.dataframe(coverage,hide_index=True,use_container_width=True)
     for name in ['report.xlsx','query.sql','qa.json']:
         if name in (execution.get('artifacts') or {}):
             try:
@@ -208,9 +215,15 @@ else:
     git=execution.get('git') or {}
     if git.get('documentation_url'):st.link_button('Результат в BookStack',git['documentation_url'])
     for pull in git.get('pulls',[]):st.link_button('PR задачи #'+str(pull['task_id']),pull['pull_request_url'])
+    for release in git.get('releases',[]):st.link_button('Релиз эпика #'+str(release['epic_id']),release['pull_request_url'])
+    if execution['status']=='RELEASE_REVIEW':
+        st.info('Результат принят. Релизные PR ожидают независимого ревью, CI и слияния в main.')
+        if st.button('Проверить выпуск релиза'):
+            if request('/stories/'+id+'/execution/finalize-release','POST',{}):st.rerun()
+    for tag in git.get('tags',[]):st.caption('Выпущен: '+tag['tag'])
     if execution['status']=='WAITING_GITHUB':
-        st.info('Расчёт и отчёт готовы. Для публикации PR требуется сервисный GitHub-токен в локальном .env и перезапуск GitHub broker.')
-    if execution['status'] in ['WAITING_GITHUB','READY_TO_PUBLISH','PUBLISHED']:
+        st.info('Расчёт и отчёт готовы. Для публикации PR нужны сервисный GitHub-токен в локальном .env, перезапуск GitHub broker и слияние PR реализации этапа 3 в базовую release-ветку.')
+    if execution['status'] in ['WAITING_GITHUB','READY_TO_PUBLISH','PUBLISHED'] or execution['status'] in ['BUSINESS_ACCEPTED','FINALIZING_RELEASE'] and story['status']=='FAILED':
         if st.button('Повторить публикацию PR'):
             if request('/stories/'+id+'/execution/retry','POST',{}):st.rerun()
     if execution['status']=='ACCEPTANCE':

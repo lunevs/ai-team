@@ -34,6 +34,15 @@ class Pulls(BaseModel):
     model_config=ConfigDict(extra='forbid')
     pulls:list[dict]=Field(min_length=1,max_length=30)
 
+class Release(Pulls):
+    epic_id:int=Field(ge=1)
+
+class Finalize(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    epic_id:int=Field(ge=1)
+    number:int=Field(ge=1)
+    commit:str=Field(pattern=r'^[0-9a-f]{40}$')
+
 
 def auth(value):
     token=os.getenv('GIT_BROKER_API_TOKEN','')
@@ -89,17 +98,31 @@ def publish_task(data,task,base_sha):
     digest=hashlib.sha256(b''.join(k.encode()+b'\0'+v for k,v in sorted(blobs.items()))).hexdigest()
     marker=f'AI run={data.run_id} task={task.task_id} digest={digest}'
     release='release/'+str(task.epic_id);branch='feature/'+str(task.task_id)
+    workspace=Path(os.getenv('GIT_WORKSPACE_ROOT','/data/git'))/data.run_id.hex/str(task.task_id)
+    workspace.mkdir(parents=True,exist_ok=True)
+    manifest=workspace/'_commit.json'
+    saved=json.loads(manifest.read_text()) if manifest.exists() else None
+    if saved and saved['digest']!=digest:raise HTTPException(409,'Verified task content changed')
     release_sha=ensure_ref(release,base_sha)
     tip=github(REPO+'/git/ref/heads/'+branch,missing=True)
+    if not tip:
+        prior=github(REPO+'/pulls?state=all&head=lunevs:'+branch+'&base='+release)
+        if prior:
+            pr=prior[0]
+            if pr['state']=='closed' and not pr.get('merged_at'):raise HTTPException(409,'Task PR closed without merge')
+            # GitHub may delete a merged feature branch. Reuse the verified original head;
+            # recreating the commit would change its timestamp/SHA and invalidate QA binding.
+            tip={'object':{'sha':pr['head']['sha']}}
+    if not tip and saved:
+        tip={'object':{'sha':ensure_ref(branch,saved['sha'])}}
     sha=None
     if tip:
+        if not saved or saved['sha']!=tip['object']['sha']:raise HTTPException(409,'Verified workspace/commit changed; restore the original workspace')
         commit=github(REPO+'/git/commits/'+tip['object']['sha'])
         if marker not in commit['message']:raise HTTPException(409,'Branch changed outside this verified run')
         sha=tip['object']['sha']
     else:
         tree=[]
-        workspace=Path(os.getenv('GIT_WORKSPACE_ROOT','/data/git'))/data.run_id.hex/str(task.task_id)
-        workspace.mkdir(parents=True,exist_ok=True)
         for name,content in blobs.items():
             (workspace/name).write_bytes(content)
             blob=github(REPO+'/git/blobs','POST',{'encoding':'base64','content':base64.b64encode(content).decode()})
@@ -109,6 +132,8 @@ def publish_task(data,task,base_sha):
         created_tree=github(REPO+'/git/trees','POST',{'base_tree':parent['tree']['sha'],'tree':tree})
         commit=github(REPO+'/git/commits','POST',{'message':marker,'tree':created_tree['sha'],'parents':[release_sha]})
         sha=commit['sha']
+        temporary=manifest.with_suffix('.tmp')
+        temporary.write_text(json.dumps({'sha':sha,'digest':digest}));temporary.replace(manifest)
         # Create the feature ref directly at its immutable commit. Never force-push or update main.
         if ensure_ref(branch,sha)!=sha:raise HTTPException(409,'Feature ref raced with another writer')
     pr=ensure_pr(branch,release,f'Задача #{task.task_id}: {task.role}',
@@ -127,15 +152,21 @@ def ready(authorization:str=Header(default='')):
     auth(authorization)
     if not os.getenv('GITHUB_RUNTIME_TOKEN'):return {'configured':False}
     result=github(REPO+'/git/ref/heads/'+os.getenv('GITHUB_BASE_REF','release/188'))
-    return {'configured':True,'base_sha':result['object']['sha']}
+    contract=github(REPO+'/contents/app/runtime_contract.json?ref='+result['object']['sha'],missing=True)
+    try:valid=contract is not None and json.loads(base64.b64decode(contract['content']))['version']==4
+    except (KeyError,ValueError,TypeError):valid=False
+    return {'configured':True,'base_sha':result['object']['sha'],'base_ready':valid}
 
 @app.post('/publish')
 def publish(data:Publish,authorization:str=Header(default='')):
     auth(authorization)
     if len({t.task_id for t in data.tasks})!=len(data.tasks):raise HTTPException(422,'Duplicate task')
-    base=github(REPO+'/git/ref/heads/'+os.getenv('GITHUB_BASE_REF','release/188'))['object']['sha']
+    readiness=ready(authorization)
+    if not readiness.get('base_ready'):raise HTTPException(409,'Merge stage 3 implementation before runtime publication')
+    base=readiness['base_sha']
     # Stable refs and markers reconcile partial publication after process/network failures.
-    return {'pulls':[publish_task(data,task,base) for task in data.tasks],'independent_review_required':True}
+    return {'pulls':[publish_task(data,task,base) for task in data.tasks],'independent_review_required':True,
+            'base_ref':os.getenv('GITHUB_BASE_REF','release/188'),'base_commit':base}
 
 
 def evaluate_pull(pr,reviews,checks,statuses,expected_commit):
@@ -171,3 +202,36 @@ def gate(data:Pulls,authorization:str=Header(default='')):
         statuses=github(REPO+f'/commits/{expected}/status')
         results.append({'number':number,**evaluate_pull(pr,reviews,checks,statuses,expected)})
     return {'eligible':all(r['eligible'] for r in results),'pulls':results}
+
+@app.post('/release')
+def release(data:Release,authorization:str=Header(default='')):
+    auth(authorization)
+    if not gate(Pulls(pulls=data.pulls),authorization)['eligible']:raise HTTPException(409,'Task PR gate is not complete')
+    branch='release/'+str(data.epic_id)
+    for item in data.pulls:
+        pr=github(REPO+'/pulls/'+str(int(item['number'])))
+        if pr['base']['ref']!=branch:raise HTTPException(409,'Task PR belongs to another epic')
+    pr=ensure_pr(branch,'main',f'Релиз эпика #{data.epic_id}',
+        'Результат принят заказчиком после независимого ревью task PR, успешного CI и их слияния. '
+        'Выпуск в main требует отдельного независимого review, CI и ручного слияния. Автослияние отключено.')
+    return {'epic_id':data.epic_id,'number':pr['number'],'commit':pr['head']['sha'],
+            'pull_request_url':pr['html_url'],'release_branch':branch}
+
+@app.post('/finalize-release')
+def finalize_release(data:Finalize,authorization:str=Header(default='')):
+    auth(authorization)
+    pr=github(REPO+'/pulls/'+str(data.number))
+    if pr['base']['ref']!='main' or pr['head']['ref']!='release/'+str(data.epic_id):raise HTTPException(409,'Release PR does not match epic')
+    if not gate(Pulls(pulls=[{'number':data.number,'commit':data.commit}]),authorization)['eligible']:
+        raise HTTPException(409,'Release review/CI/merge gate incomplete')
+    merge=pr.get('merge_commit_sha')
+    if not merge or not re.fullmatch('[0-9a-f]{40}',merge):raise HTTPException(409,'Merge commit missing')
+    tag=f'epic-{data.epic_id}-v0.4.0'
+    existing=github(REPO+'/git/ref/tags/'+tag,missing=True)
+    if existing and existing['object']['sha']!=merge:raise HTTPException(409,'Release tag conflicts')
+    if not existing:
+        try:github(REPO+'/git/refs','POST',{'ref':'refs/tags/'+tag,'sha':merge})
+        except HTTPException:
+            existing=github(REPO+'/git/ref/tags/'+tag,missing=True)
+            if not existing or existing['object']['sha']!=merge:raise
+    return {'epic_id':data.epic_id,'tag':tag,'commit':merge,'pull_request_url':pr['html_url']}

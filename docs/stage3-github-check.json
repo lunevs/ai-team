@@ -1,0 +1,152 @@
+{
+  "backend": "real-github-scoped-service-token",
+  "story_id": "379f6486-4111-404e-a7fb-3272f1ef9d22",
+  "work_package_id": 219,
+  "status": "ACCEPTANCE",
+  "git": {
+    "pulls": [
+      {
+        "author": "lunevs",
+        "branch": "feature/222",
+        "commit": "5ff80318c02b8e6016c8ff65a29ecf2dc40afaf6",
+        "number": 22,
+        "epic_id": 221,
+        "task_id": 222,
+        "release_branch": "release/221",
+        "pull_request_url": "https://github.com/lunevs/ai-team/pull/22"
+      },
+      {
+        "author": "lunevs",
+        "branch": "feature/223",
+        "commit": "c13a14d0827a5d74ea33cf642063ddd5a012a4b0",
+        "number": 23,
+        "epic_id": 221,
+        "task_id": 223,
+        "release_branch": "release/221",
+        "pull_request_url": "https://github.com/lunevs/ai-team/pull/23"
+      },
+      {
+        "author": "lunevs",
+        "branch": "feature/224",
+        "commit": "f7662ff53fe0d3a7a6a2f9b602a21ae4222f3c44",
+        "number": 24,
+        "epic_id": 221,
+        "task_id": 224,
+        "release_branch": "release/221",
+        "pull_request_url": "https://github.com/lunevs/ai-team/pull/24"
+      },
+      {
+        "author": "lunevs",
+        "branch": "feature/225",
+        "commit": "76183866ebc4b5549665f79200d509bdaf605e70",
+        "number": 25,
+        "epic_id": 221,
+        "task_id": 225,
+        "release_branch": "release/221",
+        "pull_request_url": "https://github.com/lunevs/ai-team/pull/25"
+      },
+      {
+        "author": "lunevs",
+        "branch": "feature/227",
+        "commit": "4b45b31a97bddea3d41ca86dd387e3a7d6ec529b",
+        "number": 26,
+        "epic_id": 226,
+        "task_id": 227,
+        "release_branch": "release/226",
+        "pull_request_url": "https://github.com/lunevs/ai-team/pull/26"
+      },
+      {
+        "author": "lunevs",
+        "branch": "feature/228",
+        "commit": "73fcb8d580dd34a1fff32cff128c2456b9593de6",
+        "number": 27,
+        "epic_id": 226,
+        "task_id": 228,
+        "release_branch": "release/226",
+        "pull_request_url": "https://github.com/lunevs/ai-team/pull/27"
+      }
+    ],
+    "base_ref": "feature/193",
+    "base_commit": "75e931dcd854f9c3dc1701909549400213a75f62",
+    "documentation_url": "http://localhost:8082/books/bank-ai-delivery-team/page/ai-379f6486-4111-404e-a7fb-3272f1ef9d22-r1execution-rascet-qa-i-otcet",
+    "independent_review_required": true
+  },
+  "repeat": {
+    "same_commit_and_pr": true,
+    "pull": {
+      "task_id": 222,
+      "epic_id": 221,
+      "branch": "feature/222",
+      "release_branch": "release/221",
+      "commit": "5ff80318c02b8e6016c8ff65a29ecf2dc40afaf6",
+      "pull_request_url": "https://github.com/lunevs/ai-team/pull/22",
+      "number": 22,
+      "author": "lunevs"
+    }
+  },
+  "gate": {
+    "eligible": false,
+    "pulls": [
+      {
+        "number": 22,
+        "eligible": false,
+        "reasons": [
+          "PR not merged",
+          "Independent approval required"
+        ]
+      },
+      {
+        "number": 23,
+        "eligible": false,
+        "reasons": [
+          "PR not merged",
+          "Independent approval required"
+        ]
+      },
+      {
+        "number": 24,
+        "eligible": false,
+        "reasons": [
+          "PR not merged",
+          "Independent approval required"
+        ]
+      },
+      {
+        "number": 25,
+        "eligible": false,
+        "reasons": [
+          "PR not merged",
+          "Independent approval required"
+        ]
+      },
+      {
+        "number": 26,
+        "eligible": false,
+        "reasons": [
+          "PR not merged",
+          "Independent approval required"
+        ]
+      },
+      {
+        "number": 27,
+        "eligible": false,
+        "reasons": [
+          "PR not merged",
+          "Independent approval required"
+        ]
+      }
+    ]
+  },
+  "checks": [
+    "actual feature branches, per-epic release branches and six task PRs",
+    "PR links synchronized to OpenProject and BookStack",
+    "retry returns same commit and PR",
+    "worker has no GitHub token",
+    "GitHub reviews/checks/status API accessible",
+    "human acceptance denied while independent review/merge incomplete",
+    "no extra LLM calls; total remains eight"
+  ],
+  "production_base_ref": "release/188",
+  "test_base_ref": "feature/193",
+  "human_accepted": false
+}

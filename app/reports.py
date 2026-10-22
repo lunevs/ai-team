@@ -54,10 +54,15 @@ def create_workbook(rows,metadata,destination):
         files={i.filename:(i,source.read(i.filename)) for i in source.infolist()}
     summary=minidom.parseString(files['xl/worksheets/sheet1.xml'][1])
     data=minidom.parseString(files['xl/worksheets/sheet2.xml'][1])
-    for document in [summary,data]:document.documentElement.setAttribute('xmlns',NS)
+    quality=minidom.parseString(files['xl/worksheets/sheet3.xml'][1])
+    for document in [summary,data,quality]:document.documentElement.setAttribute('xmlns',NS)
     for index,row in enumerate(ordered,5):
         for col,value in zip('ABCDEFGH',[row['month'],int(row['product_id']),row['region']]+[row[k] for k in METRICS]):
             _cell(data,f'{col}{index}',value)
+    from app.synthetic import reference
+    for index,row in enumerate(reference(),5):
+        for col,key in zip('ABCDEF',['month','product_id','region','source_row_count','snapshot_loan_count','missing_snapshot_loans']):
+            _cell(quality,f'{col}{index}',row[key])
     for index,row in enumerate(monthly(ordered),6):
         for col,key in [('B','balance'),('C','dpd30_balance'),('D','dpd90_balance'),('E','npl90_ratio'),('F','interest_income')]:
             _cell(summary,f'{col}{index}',row[key],formula=True)
@@ -65,6 +70,7 @@ def create_workbook(rows,metadata,destination):
         _cell(summary,f'B{index}',str(metadata[key]))
     files['xl/worksheets/sheet1.xml']=(files['xl/worksheets/sheet1.xml'][0],summary.toxml(encoding='UTF-8'))
     files['xl/worksheets/sheet2.xml']=(files['xl/worksheets/sheet2.xml'][0],data.toxml(encoding='UTF-8'))
+    files['xl/worksheets/sheet3.xml']=(files['xl/worksheets/sheet3.xml'][0],quality.toxml(encoding='UTF-8'))
     workbook=minidom.parseString(files['xl/workbook.xml'][1])
     calc=workbook.getElementsByTagNameNS(NS,'calcPr')
     if calc:
