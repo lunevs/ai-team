@@ -37,3 +37,27 @@ def test_invalid_provider_output_retains_usage_without_logging_content(monkeypat
         providers.OpenRouterProvider().generate_structured('financial_analyst','synthetic',AnalyticsResult)
     assert error.value.usage=={'total_tokens':12,'cost':0.01}
     assert 'private-marker' not in capsys.readouterr().out
+
+
+def test_invalid_output_repair_is_bounded_and_keeps_budget_path(monkeypatch):
+    from app import providers
+    from app.schemas import PMResult
+    calls=[]
+    expected=PMResult(goal='Build warehouse',acceptance_criteria=['Document requirements'],priorities=['Clarify scope'])
+    def generate(*args):
+        calls.append(args)
+        if len(calls)==1:
+            raise providers.InvalidModelOutput({'total_tokens':12},[{'field':'priorities','type':'missing'}])
+        return expected
+    monkeypatch.setattr(providers,'_generate',generate)
+    assert providers.generate('story','pm',PMResult,{'story':'request'})==expected
+    assert len(calls)==2
+    assert calls[1][3]['output_correction']['issues']==[{'field':'priorities','type':'missing'}]
+    calls.clear()
+    def invalid(*args):
+        calls.append(args)
+        raise providers.InvalidModelOutput()
+    monkeypatch.setattr(providers,'_generate',invalid)
+    with pytest.raises(providers.InvalidModelOutput):
+        providers.generate('story','pm',PMResult,{'story':'request'})
+    assert len(calls)==2

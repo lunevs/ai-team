@@ -16,9 +16,10 @@ class LLMProvider(Protocol):
 
 class CapabilityError(Exception): pass
 class InvalidModelOutput(Exception):
-    def __init__(self,usage=None):
+    def __init__(self,usage=None,issues=None):
         super().__init__('Invalid structured model output')
         self.usage=usage or {}
+        self.issues=issues or []
 
 def completion_limit(schema):
     return settings.completion_tokens*2 if schema is AnalyticsResult or schema.__name__=='ProductSolution' else settings.completion_tokens
@@ -57,7 +58,8 @@ class OpenRouterProvider:
             parsed=schema.model_validate_json(content)
         except (ValueError,KeyError,TypeError) as exc:
             log('llm.validation_failed',error_type=type(exc).__name__,validation_types=[e['type'] for e in exc.errors()] if hasattr(exc,'errors') else [],finish_reason=result.get('choices',[{}])[0].get('finish_reason'))
-            raise InvalidModelOutput(result.get('usage',{})) from None
+            issues=[{'field':'.'.join(map(str,e['loc'])),'type':e['type']} for e in exc.errors()] if hasattr(exc,'errors') else [{'type':'invalid_json'}]
+            raise InvalidModelOutput(result.get('usage',{}),issues) from None
         return parsed,result.get('usage',{})
 
     def generate_text(self,prompt):
@@ -139,7 +141,12 @@ class MockProvider:
 
 def generate(story_id,role,schema,context,result_role=None):
     with tracer.start_as_current_span('agent.'+role,attributes={'story_id':str(story_id),'role':role,'backend':settings.backend,'model':settings.model}):
-        return _generate(story_id,role,schema,context,result_role)
+        try:
+            return _generate(story_id,role,schema,context,result_role)
+        except InvalidModelOutput as exc:
+            # One repair attempt, with a separate durable budget reservation.
+            repair={**context,'output_correction':{'instruction':'Previous response failed schema validation. Return the complete JSON object, including every required field, even when asking clarification questions. Do not return a schema or a partial object.','issues':exc.issues}}
+            return _generate(story_id,role,schema,repair,result_role)
 
 def _generate(story_id,role,schema,context,result_role=None):
     provider=provider_for(settings.backend)
