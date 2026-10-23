@@ -1,0 +1,78 @@
+{
+  "backend": "mock",
+  "database": "disposable empty PostgreSQL",
+  "github": "tokenless simulated review gates; no GitHub writes",
+  "checks": [
+    "postgres_persistence_and_operator_leases",
+    "dynamic_two_epics_and_trusted_packaging",
+    "workspace_operator_auth_data",
+    "snapshot_binding_data",
+    "docker_check_data",
+    "restart_preserves_pending_snapshot",
+    "receipt_replay_data",
+    "no_integration_before_review_data",
+    "workspace_operator_auth_service",
+    "snapshot_binding_service",
+    "docker_check_service",
+    "receipt_replay_service",
+    "no_integration_before_review_service",
+    "second_epic_waits_for_release",
+    "workspace_operator_auth_extend",
+    "snapshot_binding_extend",
+    "docker_check_extend",
+    "workspace_operator_auth_extend",
+    "snapshot_binding_extend",
+    "docker_check_extend",
+    "receipt_replay_extend",
+    "no_integration_before_review_extend",
+    "workspace_operator_auth_quality",
+    "snapshot_binding_quality",
+    "docker_check_quality",
+    "receipt_replay_quality",
+    "no_integration_before_review_quality",
+    "check_resumes_before_finish",
+    "all_four_tasks_integrated",
+    "two_epics_released_in_order",
+    "final_real_docker_tests_and_health",
+    "first_endpoint_preserved",
+    "second_endpoint_independent_probe",
+    "independent_qa_and_architecture_reviews",
+    "final_delivery_still_requires_review"
+  ],
+  "story_id": "12461eea-802a-4801-b133-d07c111661cf",
+  "usage": {
+    "calls": 22,
+    "tokens": 2200,
+    "estimated_cost_usd": 0.0,
+    "estimated_calls": 0,
+    "backends": [
+      "mock"
+    ],
+    "models": [
+      "deepseek/deepseek-v4.1-flash"
+    ]
+  },
+  "task_checks": [
+    {
+      "task_key": "data",
+      "tests_run": 0
+    },
+    {
+      "task_key": "service",
+      "tests_run": 1
+    },
+    {
+      "task_key": "extend",
+      "tests_run": 2
+    },
+    {
+      "task_key": "extend",
+      "tests_run": 2
+    },
+    {
+      "task_key": "quality",
+      "tests_run": 2
+    }
+  ],
+  "status": "passed"
+}

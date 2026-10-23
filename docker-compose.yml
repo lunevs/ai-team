@@ -307,6 +307,7 @@ services:
     environment:
       GITHUB_RUNTIME_TOKEN: ${GITHUB_RUNTIME_TOKEN:-}
       GIT_BROKER_API_TOKEN: ${GIT_BROKER_API_TOKEN:-}
+      GITHUB_WORKSPACE_BASE_REF: ${GITHUB_WORKSPACE_BASE_REF:-release/370}
       GITHUB_PRODUCT_BASE_REF: ${GITHUB_PRODUCT_BASE_REF:-release/302}
       GITHUB_BASE_REF: ${GITHUB_BASE_REF:-release/188}
     volumes: [git_workspaces:/data/git]
