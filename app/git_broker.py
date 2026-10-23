@@ -3,6 +3,8 @@ import base64
 import hashlib
 import hmac
 import json
+import io
+import zipfile
 import os
 from pathlib import Path
 import re
@@ -29,6 +31,7 @@ class Publish(BaseModel):
     revision:int=Field(ge=1)
     documentation_url:str=Field(max_length=1000)
     tasks:list[TaskBundle]=Field(min_length=1,max_length=30)
+    product_package:bool=False
 
 class Pulls(BaseModel):
     model_config=ConfigDict(extra='forbid')
@@ -42,6 +45,7 @@ class Finalize(BaseModel):
     epic_id:int=Field(ge=1)
     number:int=Field(ge=1)
     commit:str=Field(pattern=r'^[0-9a-f]{40}$')
+    version:str=Field(default='0.4.0',pattern=r'^[0-9]+\.[0-9]+\.[0-9]+$')
 
 
 def auth(value):
@@ -86,7 +90,18 @@ def ensure_pr(head,base,title,body):
 
 
 def publish_task(data,task,base_sha):
-    if not task.files or not set(task.files)<=FILES:raise HTTPException(422,'File path outside allowlist')
+    if not task.files:raise HTTPException(422,'Empty bundle')
+    if data.product_package:
+        from app.product_contract import safe_path,RESERVED
+        for name in task.files:
+            parts=name.split('/')
+            if len(parts)<3 or parts[0]!='products' or not re.fullmatch(r'p-[a-f0-9]{12}',parts[1]):raise HTTPException(422,'Invalid product path')
+            relative='/'.join(parts[2:])
+            try:
+                if relative not in RESERVED:safe_path(relative)
+            except ValueError:raise HTTPException(422,'Product path rejected') from None
+        if len({p.split('/')[1] for p in task.files})!=1:raise HTTPException(422,'Multiple product roots')
+    elif not set(task.files)<=FILES:raise HTTPException(422,'File path outside allowlist')
     blobs={}
     total=0
     for name,encoded in sorted(task.files.items()):
@@ -95,6 +110,13 @@ def publish_task(data,task,base_sha):
         total+=len(content)
         if total>2_000_000:raise HTTPException(422,'Bundle too large')
         blobs[name]=content
+    if data.product_package and task.role=='application_developer':
+        from app.product_contract import inspect_package
+        output=io.BytesIO()
+        with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as archive:
+            for name,content in blobs.items():archive.writestr(name,content)
+        try:inspect_package(output.getvalue())
+        except (ValueError,KeyError,TypeError):raise HTTPException(422,'Product package policy rejected') from None
     digest=hashlib.sha256(b''.join(k.encode()+b'\0'+v for k,v in sorted(blobs.items()))).hexdigest()
     marker=f'AI run={data.run_id} task={task.task_id} digest={digest}'
     release='release/'+str(task.epic_id);branch='feature/'+str(task.task_id)
@@ -124,9 +146,11 @@ def publish_task(data,task,base_sha):
     else:
         tree=[]
         for name,content in blobs.items():
-            (workspace/name).write_bytes(content)
+            local=workspace/name
+            local.parent.mkdir(parents=True,exist_ok=True)
+            local.write_bytes(content)
             blob=github(REPO+'/git/blobs','POST',{'encoding':'base64','content':base64.b64encode(content).decode()})
-            tree.append({'path':f'deliveries/{data.story_id}/r{data.revision}/task-{task.task_id}/{name}',
+            tree.append({'path':name if data.product_package else f'deliveries/{data.story_id}/r{data.revision}/task-{task.task_id}/{name}',
                          'mode':'100644','type':'blob','sha':blob['sha']})
         parent=github(REPO+'/git/commits/'+release_sha)
         created_tree=github(REPO+'/git/trees','POST',{'base_tree':parent['tree']['sha'],'tree':tree})
@@ -138,8 +162,8 @@ def publish_task(data,task,base_sha):
         if ensure_ref(branch,sha)!=sha:raise HTTPException(409,'Feature ref raced with another writer')
     pr=ensure_pr(branch,release,f'Задача #{task.task_id}: {task.role}',
         f'Результат исполнения истории {data.story_id}, ревизия {data.revision}.\n\n'
-        f'Задача: http://localhost:8080/work_packages/{task.task_id}\nДокументация: {data.documentation_url}\n\n'
-        'SQL проверен sandbox и независимым QA. LLM-review аналитика приложено как артефакт и не заменяет независимое GitHub-review. '
+        f'Задача: http://localhost:8080/work_packages/{task.task_id}\nДокументация: {data.documentation_url}\n\n'+
+        ('Продукт проверен изолированным оператором; отчёт тестов и LLM-review приложены. ' if data.product_package else 'SQL проверен sandbox и независимым QA. LLM-review аналитика приложено как артефакт. ')+ 'LLM-review не заменяет независимое GitHub-review. '
         'Автор PR не может одобрить собственный PR. Автослияние отключено.\n\n'+marker)
     return {'task_id':task.task_id,'epic_id':task.epic_id,'branch':branch,'release_branch':release,
             'commit':sha,'pull_request_url':pr['html_url'],'number':pr['number'],'author':pr['user']['login']}
@@ -226,7 +250,7 @@ def finalize_release(data:Finalize,authorization:str=Header(default='')):
         raise HTTPException(409,'Release review/CI/merge gate incomplete')
     merge=pr.get('merge_commit_sha')
     if not merge or not re.fullmatch('[0-9a-f]{40}',merge):raise HTTPException(409,'Merge commit missing')
-    tag=f'epic-{data.epic_id}-v0.4.0'
+    tag=f'epic-{data.epic_id}-v{data.version}'
     existing=github(REPO+'/git/ref/tags/'+tag,missing=True)
     if existing and existing['object']['sha']!=merge:raise HTTPException(409,'Release tag conflicts')
     if not existing:

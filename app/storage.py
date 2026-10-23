@@ -6,7 +6,7 @@ from typing import Protocol
 from urllib.parse import urlsplit,quote
 import httpx
 
-NAMES={'report.xlsx','query.sql','qa.json','review.json','financial.json','style.md','architecture.md','acceptance.md','dashboard.py'}
+NAMES={'report.xlsx','query.sql','qa.json','review.json','financial.json','style.md','architecture.md','acceptance.md','dashboard.py','product.zip'}
 MAX_BYTES=8*1024*1024
 class StorageError(Exception):pass
 class IntegrityError(StorageError):pass

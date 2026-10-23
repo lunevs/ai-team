@@ -21,7 +21,7 @@ class InvalidModelOutput(Exception):
         self.usage=usage or {}
 
 def completion_limit(schema):
-    return settings.completion_tokens*2 if schema is AnalyticsResult else settings.completion_tokens
+    return settings.completion_tokens*2 if schema is AnalyticsResult or schema.__name__=='ProductSolution' else settings.completion_tokens
 class RetryableProviderError(Exception): pass
 
 class OpenRouterProvider:
@@ -81,7 +81,25 @@ def provider_for(backend):
 class MockProvider:
     def generate_structured(self,role,prompt,schema):
         context=json.loads(prompt)
-        if schema is PMResult:
+        from app.product_contract import Contribution,ProductSolution,ProductReview
+        if schema is Contribution:
+            result=Contribution(specification='Синтетическая проверка протокола поставки: результат 42 synthetic-check, независимая сверка, без загрузки внешних данных.',files={})
+        elif schema is ProductSolution:
+            from pathlib import Path
+            root=Path(__file__).with_name('product_templates')
+            result=ProductSolution(title='Проверка самостоятельного продукта',kind='service',output_type='scalar',needs_database=False,
+                architecture='Самостоятельный HTTP сервис на Python stdlib с отдельным контейнером и volume, без зависимости от команды.',
+                operating_notes='Миграции и внешние данные отсутствуют. GET /result возвращает синтетическое значение 42; backup требуется только для volume результатов.',
+                files={'app.py':(root/'smoke_app.py').read_text(),'tests/test_product.py':(root/'smoke_test.py').read_text()})
+        elif schema is ProductReview:
+            result=ProductReview(approved=True,findings=[])
+        elif schema is PMResult and context.get('delivery_mode')=='product':
+            result=PMResult(goal='Проверить самостоятельную поставку синтетического продукта',acceptance_criteria=['GET /result возвращает value=42 и unit=synthetic-check','Продукт работает без сервисов AI-команды'],priorities=['Независимый запуск','Воспроизводимая поставка'],questions=[])
+        elif schema is SAResult and context.get('delivery_mode')=='product':
+            roles=['financial_analyst','designer','data_developer','application_developer','qa','system_analyst']
+            result=SAResult(architecture='Самостоятельный Python HTTP продукт на общей продуктовой инфраструктуре, отдельный volume, Dockerfile и install.md; служебные API команды не используются.',epics=[{'key':'product','title':'Самостоятельный продукт','tasks':[
+                {'key':r,'title':'Продукт: '+r,'role':r,'acceptance_criteria':['Результат роли документирован и проверяем'], 'depends_on':([roles[i-1]] if i else [])} for i,r in enumerate(roles)]}])
+        elif schema is PMResult:
             result=PMResult(goal='Создать проверяемую витрину анализа кредитного портфеля',acceptance_criteria=['Согласовать метрики и правила агрегации','Проверить расчёты на синтетических данных'],priorities=['Определения метрик','Данные и проверки'],questions=['Как выбирать срез конца месяца?'] if '[уточнить]' in context['story'] and not context['answers'] else [])
         elif schema is SQLArtifact:
             from pathlib import Path

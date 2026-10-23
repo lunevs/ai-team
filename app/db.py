@@ -63,12 +63,13 @@ def enqueue(conn, story_id):
 
 def create_story(data, key):
     payload=data.model_dump()
+    if data.delivery_mode=='credit_demo':payload.pop('delivery_mode') # preserve legacy request fingerprints
     fingerprint=hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest()
     story_id=uuid.uuid4()
     with connection() as conn:
-        inserted=conn.execute('''INSERT INTO stories(id,idempotency_key,request_hash,text,synthetic_only,max_calls,max_tokens,max_cost_usd,trace_id)
-          VALUES(%s,%s,%s,%s,true,%s,%s,%s,%s) ON CONFLICT(idempotency_key) DO NOTHING RETURNING id''',
-          (story_id,key,fingerprint,data.text,data.max_calls,data.max_tokens,data.max_cost_usd,uuid.uuid4().hex)).fetchone()
+        inserted=conn.execute('''INSERT INTO stories(id,idempotency_key,request_hash,text,synthetic_only,max_calls,max_tokens,max_cost_usd,trace_id,delivery_mode)
+          VALUES(%s,%s,%s,%s,true,%s,%s,%s,%s,%s) ON CONFLICT(idempotency_key) DO NOTHING RETURNING id''',
+          (story_id,key,fingerprint,data.text,data.max_calls,data.max_tokens,data.max_cost_usd,uuid.uuid4().hex,data.delivery_mode)).fetchone()
         row=conn.execute('SELECT * FROM stories WHERE idempotency_key=%s',(key,)).fetchone()
         if row['request_hash'] != fingerprint:
             raise Conflict('Idempotency key reused for different request')

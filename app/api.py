@@ -11,7 +11,7 @@ from app.observability import log
 async def lifespan(app):
     yield
 
-app=FastAPI(title='Bank AI Delivery Team',version='0.6.0',lifespan=lifespan)
+app=FastAPI(title='Bank AI Delivery Team',version='0.7.0',lifespan=lifespan)
 
 @app.middleware('http')
 async def trace_story_mutation(request,call_next):
@@ -66,12 +66,13 @@ def require_story(id):
     return row
 
 def public_story(row):
+    from app.products import get as get_product, public as public_product
     from app.analytics import get_run
     from app.execution import get_run as get_execution
     with db.connection() as conn:
         links=conn.execute('SELECT key,external_id,url FROM external_ids WHERE story_id=%s ORDER BY key',(row['id'],)).fetchall()
     main=next((x['external_id'] for x in links if x['key']=='main'),None)
-    return {k:row[k] for k in ['id','text','status','revision','pm','plan','plan_digest','approved','questions','trace_id','error_type','created_at','updated_at']} | {'story_id':row['id'],'openproject_work_package_id':main,'links':links,'usage':db.usage(row['id']),'analytics':get_run(row['id'],row['revision']),'execution':get_execution(row['id'],row['revision'])}
+    return {k:row[k] for k in ['id','text','delivery_mode','status','revision','pm','plan','plan_digest','approved','questions','trace_id','error_type','created_at','updated_at']} | {'product':public_product(get_product(row['id'],row['revision'])),'story_id':row['id'],'openproject_work_package_id':main,'links':links,'usage':db.usage(row['id']),'analytics':get_run(row['id'],row['revision']),'execution':get_execution(row['id'],row['revision'])}
 
 @app.post('/stories',status_code=201)
 def create(data:StoryInput,response:Response,idempotency_key:str=Header(min_length=8,max_length=128),user=Depends(current_user)):
@@ -341,3 +342,6 @@ def finalize_execution_release(id:uuid.UUID,user=Depends(current_user)):
             db.event(conn,story,'execution.release_finalization_requested',{'actor':user})
             db.enqueue(conn,id)
     return {'status':'FINALIZING_RELEASE'}
+
+from app.product_api import router as product_router
+app.include_router(product_router)
