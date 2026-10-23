@@ -40,7 +40,7 @@ def test_product_activity_and_history_use_product_roles():
     result=project_team(story,[{'role':'product_solution','revision':1}],{},
         [{'role':'application_developer','revision':1,'state':'reserved'}],[],{},True,True)
     app=next(a for a in result['agents'] if a['role']=='application_developer')
-    assert app['current']=='Пишет приложение и тесты'
+    assert app['current']=='Создаёт приложение'
     assert app['history'][0]['title']=='Подготовил исходники и тесты'
     assert app['completed']==0 # source preparation does not close the tracker task
 
@@ -65,4 +65,26 @@ def test_queue_explains_dependency_then_next_task_and_worker_wait():
     assert 'Ждёт завершения: Спроектировать источники' in current({},True)
     closed={1:{'_embedded':{'status':{'isClosed':True}}}}
     assert current(closed,True)=='Готовится приступить к задаче: Разработать загрузку'
-    assert 'Ждёт запуска worker' in current(closed,False)
+    assert 'Ждёт возобновления работы команды' in current(closed,False)
+
+
+def test_product_wait_is_personal_and_based_on_current_revision_results():
+    story={'revision':2,'status':'IN_PROGRESS','delivery_mode':'product','product':{'status':'CHECK_PENDING'}}
+    results=[{'role':role,'revision':2} for role in ['pm','system_analyst','product_financial_analyst','product_designer','product_data_developer','product_solution']]
+    results.append({'role':'product_qa','revision':1})
+    agents={a['role']:a for a in project_team(story,results,{},[],[],{},True,False)['agents']}
+    assert agents['pm']['current']=='Цель и требования подготовлены'
+    assert agents['financial_analyst']['current']=='Описание показателей подготовлено'
+    assert agents['data_developer']['current']=='Схема хранения данных подготовлена'
+    assert agents['application_developer']['current']=='Приложение подготовлено; ждёт проверки'
+    assert agents['qa']['current']=='Ждёт запуска проверки приложения'
+    assert agents['system_analyst']['current']=='План подготовлен; ждёт результатов проверки'
+    assert len({a['current'] for a in agents.values()})==7
+    assert agents['application_developer']['completed']==0
+    story['status']='CANCELLED'
+    assert all(a['current']=='История отменена' for a in project_team(story,results,{},[],[],{},True,False)['agents'])
+
+
+def test_active_product_role_takes_priority_over_prepared_result():
+    from app.team import product_activity
+    assert product_activity('application_developer','CHECK_PENDING',{'product_solution'},True,'')=='Создаёт приложение'
