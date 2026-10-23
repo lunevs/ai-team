@@ -19,9 +19,9 @@ DEFINITIONS = {
     'xlsx': (False, 'Работа с Excel в самостоятельном продукте', 'Доверенный профиль не содержит движка чтения/записи XLSX; кредитный демо-отчёт не расширяет профиль продукта.'),
     'pptx': (False, 'Подготовка презентаций в самостоятельном продукте', 'Профиль не содержит проверенного инструмента создания PPTX.'),
     'multiple_services': (False, 'Несколько прикладных сервисов', 'Поддержаны одно приложение, доверенный шлюз и продуктовая БД; произвольный состав сервисов не поддержан.'),
-    'multi_epic': (False, 'Последовательная разработка нескольких эпиков', 'Текущий выпуск продукта требует ровно один эпик.'),
+    'multi_epic': (True, 'Последовательная разработка нескольких эпиков', 'Эпики выполняются последовательно; следующий начинается после независимого review/CI и слияния предыдущего релиза в main.'),
     'interactive_browsing': (False, 'Исследование сайтов инструментами агента', 'У агентов нет инструмента браузера или поиска; URL в запросе сам по себе не прочитан.'),
-    'incremental_workspace': (False, 'Доработка большого проекта по задачам', 'Текущий исполнитель генерирует небольшой полный набор файлов; постоянная рабочая копия по задачам ещё не реализована.'),
+    'incremental_workspace': (True, 'Доработка большого проекта по задачам', 'Сохраняемая рабочая копия, чтение/поиск и изменения отдельных файлов; проверки отдельным host-оператором; ветка/PR каждой задачи.'),
     'automated_rework': (False, 'Автоматическое исправление замечаний', 'Отрицательная проверка пока останавливает продукт; цикл исправления относится к этапу 9.'),
 }
 
@@ -32,11 +32,11 @@ def registry():
         'version': 1, 'profile': 'python-locked-v1', 'base_image':BASE_IMAGE,
         'scope': 'Возможности доверенного профиля. Это не проверка доступности сервисов и не гарантия выполнения бизнес-требований.',
         'runtime_lock_sha256': hashlib.sha256(lock).hexdigest(),
-        'limits': {'epics': 1, 'source_files': 24, 'generation_file_target':6, 'generation_code_target_chars':10000, 'source_total_bytes': 2_000_000,
-                   'development': 'Полный небольшой продукт за одну генерацию; не универсальная среда разработки.'},
+        'limits': {'epics': 12, 'source_files': 256, 'file_characters':90000, 'read_chunk_characters':12000, 'source_total_bytes': 2_000_000,
+                   'development': 'Последовательные действия над рабочей копией по задачам; один файл или операция за ответ. Только доверенный Python-профиль.'},
         'capabilities': {key: {'supported': supported, 'name': name, 'detail': detail}
                          for key, (supported, name, detail) in DEFINITIONS.items()},
-        'implementation_sha256': {name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in ['product_policy.py','product_contract.py','products.py','feasibility.py','workflow.py']},
+        'implementation_sha256': {name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in ['product_policy.py','product_contract.py','products.py','feasibility.py','workflow.py','workspaces.py','workspace_policy.py','planning.py']},
         'evidence': ['app/product_policy.py', 'app/product_contract.py', 'app/products.py',
                      'app/product_templates/runtime-requirements.lock', 'scripts/product_operator.py'],
     }

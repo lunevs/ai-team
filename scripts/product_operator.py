@@ -349,6 +349,8 @@ def deploy_package(content,operation):
 def once():
     config=environment();operator=config.get('PRODUCT_OPERATOR_TOKEN','');token=config.get('APP_API_TOKEN','')
     if not operator or not token:raise SystemExit('Configure local PRODUCT_OPERATOR_TOKEN and APP_API_TOKEN')
+    from scripts.workspace_operator import once as workspace_once
+    if workspace_once(config):return True
     operation=api('/product-operations/claim',token=operator)
     if operation.get('operation') is None:return False
     content=api('/products/'+operation['id']+'/package',token=token,method='GET',binary=True)

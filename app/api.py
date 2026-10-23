@@ -68,6 +68,7 @@ def require_story(id):
 
 def public_story(row):
     from app.feasibility import get as get_feasibility
+    from app import workspaces
     row=dict(row)
     row['feasibility']=get_feasibility(row['id'],row['revision'])
     from app.products import get as get_product, public as public_product
@@ -76,7 +77,7 @@ def public_story(row):
     with db.connection() as conn:
         links=conn.execute('SELECT key,external_id,url FROM external_ids WHERE story_id=%s ORDER BY key',(row['id'],)).fetchall()
     main=next((x['external_id'] for x in links if x['key']=='main'),None)
-    return {k:row[k] for k in ['id','text','delivery_mode','max_calls','max_tokens','max_cost_usd','status','revision','pm','plan','plan_digest','approved','questions','trace_id','error_type','created_at','updated_at']} | {'feasibility':row['feasibility'],'waiting_reason':waiting_reason(row),'product':public_product(get_product(row['id'],row['revision'])),'story_id':row['id'],'openproject_work_package_id':main,'links':links,'usage':db.usage(row['id']),'analytics':get_run(row['id'],row['revision']),'execution':get_execution(row['id'],row['revision'])}
+    return {k:row[k] for k in ['id','text','delivery_mode','max_calls','max_tokens','max_cost_usd','status','revision','pm','plan','plan_digest','approved','questions','trace_id','error_type','created_at','updated_at']} | {'workspace':workspaces.public(workspaces.get(row['id'],row['revision'])) if row['delivery_mode']=='product' else None,'feasibility':row['feasibility'],'waiting_reason':waiting_reason(row),'product':public_product(get_product(row['id'],row['revision'])),'story_id':row['id'],'openproject_work_package_id':main,'links':links,'usage':db.usage(row['id']),'analytics':get_run(row['id'],row['revision']),'execution':get_execution(row['id'],row['revision'])}
 
 @app.post('/stories',status_code=201)
 def create(data:StoryInput,response:Response,idempotency_key:str=Header(min_length=8,max_length=128),user=Depends(current_user)):
@@ -182,6 +183,8 @@ def team(id:uuid.UUID,user=Depends(current_user)):
     story=require_story(id)
     from app.feasibility import get as get_feasibility
     story['feasibility']=get_feasibility(id,story['revision'])
+    from app import workspaces
+    story['workspace']=workspaces.public(workspaces.get(id,story['revision'])) if story['delivery_mode']=='product' else None
     with db.connection() as conn:
         story['product']=conn.execute('SELECT status FROM product_releases WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()
         story['execution']=conn.execute('SELECT status FROM execution_runs WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()
@@ -371,3 +374,6 @@ def finalize_execution_release(id:uuid.UUID,user=Depends(current_user)):
 
 from app.product_api import router as product_router
 app.include_router(product_router)
+
+from app.workspace_api import router as workspace_router
+app.include_router(workspace_router)
