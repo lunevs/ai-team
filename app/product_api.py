@@ -78,6 +78,15 @@ def claim(user=Depends(operator)):
             'product_key':record['product_key'],'version':record['version'],'package':record['package'],
             'deployment':record['deployment'],'qa':record['qa']}
 
+@router.post('/product-operations/{id}/validate')
+def validate_operation(id:uuid.UUID,data:OperatorReport,user=Depends(operator)):
+    with db.connection() as conn:
+        row=conn.execute('''SELECT p.* FROM product_releases p JOIN stories s ON s.id=p.story_id
+            WHERE p.id=%s AND p.operation_id=%s AND p.lease_until>now() AND s.revision=p.revision
+            AND s.approved AND s.status NOT IN ('CANCELLED','BLOCKED','FAILED')''',(id,data.operation_id)).fetchone()
+        if not row or row['package']['sha256']!=data.package_sha256:raise db.Conflict('Operation stopped or changed')
+    return {'active':True}
+
 @router.post('/product-operations/{id}/report')
 def report(id:uuid.UUID,data:OperatorReport,user=Depends(operator)):
     with db.connection() as conn:
@@ -96,6 +105,9 @@ def report(id:uuid.UUID,data:OperatorReport,user=Depends(operator)):
             conn.execute('UPDATE product_releases SET status=%s,qa=%s,lease_until=NULL,updated_at=now() WHERE id=%s',
                 (status,Jsonb(data.model_dump(mode='json')),id))
             if passed:db.enqueue(conn,record['story_id'])
+            else:
+                conn.execute("UPDATE stories SET status='BLOCKED',error_type='ProductChecksFailed',updated_at=now() WHERE id=%s",(story['id'],))
+                conn.execute('INSERT INTO status_outbox(story_id) VALUES(%s) ON CONFLICT DO NOTHING',(story['id'],))
         else:
             passed=data.passed and data.health_passed and data.image_id==(record['qa'] or {}).get('image_id')
             status='ACCEPTANCE' if passed else 'DEPLOY_FAILED'

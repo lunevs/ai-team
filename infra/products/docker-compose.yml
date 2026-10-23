@@ -1,0 +1,33 @@
+name: ai-products-infra
+services:
+  postgres:
+    image: postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
+    environment:
+      POSTGRES_PASSWORD: ${PRODUCTS_POSTGRES_PASSWORD:?operator private env required}
+    volumes: [product-pgdata:/var/lib/postgresql/data]
+    networks:
+      products:
+        aliases: [products-postgres]
+    restart: unless-stopped
+    cpus: 1
+    mem_limit: 512m
+    pids_limit: 128
+    security_opt: [no-new-privileges:true]
+    labels:
+      ai-team.product-managed: 'true'
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: '2'}
+    healthcheck:
+      test: [CMD, pg_isready, -U, postgres]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+volumes:
+  product-pgdata:
+    labels:
+      ai-team.product-managed: 'true'
+networks:
+  products:
+    external: true
+    name: ai-products

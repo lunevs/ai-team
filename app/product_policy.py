@@ -47,7 +47,28 @@ CMD ["python", "app.py"]
 '''
 
 
+def proxy_code(target):
+    if not re.fullmatch(r'[a-z0-9-]+',target):raise ValueError('Invalid target')
+    return """import asyncio
+async def handle(reader,writer):
+    try:
+        upstream,out=await asyncio.wait_for(asyncio.open_connection('TARGET',8000),5)
+        async def copy(source,destination):
+            while chunk:=await asyncio.wait_for(source.read(65536),30):
+                destination.write(chunk);await destination.drain()
+            destination.close()
+        await asyncio.gather(copy(reader,out),copy(upstream,writer))
+    except Exception:
+        writer.close()
+async def main():
+    server=await asyncio.start_server(handle,'0.0.0.0',8000)
+    async with server:await server.serve_forever()
+asyncio.run(main())
+""".replace('TARGET',target)
+
+
 def compose(product_key,version,kind):
+    alias='app-'+product_key
     service={
         'build':'.','image':f'ai-product-{product_key}:{version}',
         'user':'10001:10001','read_only':True,'cap_drop':['ALL'],
@@ -55,16 +76,26 @@ def compose(product_key,version,kind):
         'tmpfs':['/tmp:size=64m,mode=1777'],
         'volumes':['product-data:/data'],
         'environment':{'DATABASE_URL':'${PRODUCT_DATABASE_URL:-}','OUTPUT_DIR':'/data'},
-        'networks':['products'],
+        'networks':{'products':{'aliases':[alias]}},
         'logging':{'driver':'json-file','options':{'max-size':'5m','max-file':'2'}},
         'restart':'unless-stopped' if kind=='service' else 'no',
     }
+    networks={'products':{'external':True,'name':'ai-products'}}
+    services={'app':service}
     if kind=='service':
-        service['ports']=['127.0.0.1:${PRODUCT_PORT:-8600}:8000']
         service['healthcheck']={'test':['CMD','python','-c',"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=2)"],
             'interval':'10s','timeout':'3s','retries':6}
-    return {'name':'product-'+product_key,'services':{'app':service},
-        'networks':{'products':{'external':True,'name':'ai-products'}},'volumes':{'product-data':{}}}
+        networks['access']={}
+        services['gateway']={'image':BASE_IMAGE,'user':'10001:10001','read_only':True,
+            'cap_drop':['ALL'],'security_opt':['no-new-privileges:true'],'pids_limit':32,'cpus':0.25,'mem_limit':'64m',
+            'command':['python','-c',proxy_code(alias)],'networks':['products','access'],
+            'ports':['127.0.0.1:${PRODUCT_PORT:-8600}:8000'],'restart':'unless-stopped',
+            'depends_on':{'app':{'condition':'service_healthy'}},
+            'healthcheck':{'test':['CMD','python','-c',"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=2)"],
+                'interval':'2s','timeout':'3s','retries':20},
+            'logging':{'driver':'json-file','options':{'max-size':'5m','max-file':'2'}}}
+    return {'name':'product-'+product_key,'services':services,
+        'networks':networks,'volumes':{'product-data':{}}}
 
 
 def requirements():
@@ -154,9 +185,9 @@ Python 3.12, Docker Engine/Desktop и Compose v2; 1 CPU / 512 MB на прило
 задайте свободный PRODUCT_PORT и, если нужна БД, PRODUCT_DATABASE_URL с отдельной ролью.
 Сборка: `docker compose build`. Создайте volume командой `docker compose create`.
 Перед первым стартом инициализируйте права volume (образ уже собран):
-`docker compose run --rm --no-deps --user 0 --entrypoint chown app 10001:10001 /data`.
+`docker compose run --rm --no-deps --user 0 --cap-add CHOWN --entrypoint /usr/bin/chown app 10001:10001 /data`.
 Проверка: `docker compose run --rm --no-deps app python -m unittest discover -s tests -v`.
-Запуск: `docker compose up -d`. Сервис слушает только 127.0.0.1:PRODUCT_PORT;
+Запуск: `docker compose up -d`. Доверенный gateway публикует сервис только на 127.0.0.1:PRODUCT_PORT;
 для переноса на другой хост измените .env и скопируйте весь каталог.
 Для job используйте `docker compose run --rm app`; restart отключён.
 

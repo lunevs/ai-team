@@ -101,6 +101,14 @@ def publish_task(data,task,base_sha):
                 if relative not in RESERVED:safe_path(relative)
             except ValueError:raise HTTPException(422,'Product path rejected') from None
         if len({p.split('/')[1] for p in task.files})!=1:raise HTTPException(422,'Multiple product roots')
+        if task.role!='application_developer':
+            root=next(iter(task.files)).split('/')[1]
+            report=f'products/{root}/task-{task.task_id}.json'
+            if report not in task.files:raise HTTPException(422,'Missing task report')
+            allowed={report}
+            if task.role=='data_developer':
+                allowed|={p for p in task.files if p.startswith((f'products/{root}/data/',f'products/{root}/migrations/'))}
+            if not set(task.files)<=allowed:raise HTTPException(422,'Contribution cannot overwrite product sources')
     elif not set(task.files)<=FILES:raise HTTPException(422,'File path outside allowlist')
     blobs={}
     total=0
