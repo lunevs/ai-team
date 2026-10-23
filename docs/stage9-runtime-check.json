@@ -15,5 +15,7 @@
   "user_story_unchanged": true,
   "installed_profile_matches_sources": true,
   "operator": "manual only",
-  "no_business_acceptance_performed": true
+  "no_business_acceptance_performed": true,
+  "no_progress_guard_checked": true,
+  "source_archive_checked": true
 }
