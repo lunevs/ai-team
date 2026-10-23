@@ -319,7 +319,7 @@ def feedback(data:Pulls,authorization:str=Header(default='')):
         number=int(item['number']);expected=str(item['commit'])
         if not re.fullmatch(r'[0-9a-f]{40}',expected):raise HTTPException(422,'Invalid commit')
         pr=github(REPO+'/pulls/'+str(number))
-        if pr['head']['sha']!=expected:raise HTTPException(409,'PR changed outside verified repair')
+        if pr['head']['sha']!=expected:return {'external_change':True,'findings':[{'summary':'Ветка изменена вне подтверждённой версии','criterion':'Изменения должны соответствовать проверенному head','evidence':'Ожидался '+expected+', получен '+pr['head']['sha'],'severity':'critical','verification':'Аналитик сверяет происхождение изменений; автоматическая перезапись запрещена'}]}
         if pr.get('merged'):continue
         reviews=github(REPO+f'/pulls/{number}/reviews?per_page=100')
         latest={}

@@ -67,3 +67,26 @@ def test_repair_commit_is_fast_forward_and_recovers_ambiguous_ref_update(monkeyp
     assert result['commit']=='f'*40 and len(created)==len(updates)==1
     assert updates==[{'sha':'f'*40,'force':False}] and created[0]['parents']==['a'*40]
     assert not folder.joinpath('_pending.json').exists()
+
+
+def test_changed_source_and_attempt_have_distinct_review_cache_keys(monkeypatch):
+    from app import rework
+    called=[]
+    monkeypatch.setattr(rework,'generate',lambda *a,**kw:(called.append(kw['result_role']) or SourceReview(approved=True)))
+    story={'id':'test','text':'Результат должен быть 42','answers':'','pm':{'acceptance_criteria':['Результат 42']}}
+    task={'title':'Реализовать результат'}
+    a=rework.review_source(story,task,{'app.py':'value=41'},None,0,'task_1')
+    b=rework.review_source(story,task,{'app.py':'value=42'},None,0,'task_1')
+    c=rework.review_source(story,task,{'app.py':'value=42'},None,1,'task_1')
+    assert len(set(called))==6 and a['source_digest']!=b['source_digest'] and b['attempt']!=c['attempt']
+
+
+def test_product_package_reader_uses_immutable_storage_identity(monkeypatch):
+    import uuid
+    from app import products
+    calls=[];identity=uuid.uuid4();storage=uuid.uuid4()
+    monkeypatch.setattr(products,'read_artifact',lambda *a:(calls.append(a) or b'old package'))
+    assert products.package_bytes({'id':identity,'package':{'storage_id':str(storage)}})==b'old package'
+    assert calls[0][0]==str(storage)
+    products.package_bytes({'id':identity,'package':{'sha256':'a'*64}})
+    assert calls[1][0]==identity # Earlier products stay readable.

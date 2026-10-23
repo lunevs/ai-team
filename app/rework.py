@@ -11,7 +11,7 @@ from app.rework_contract import Finding,SourceReview,Triage,validate_triage,fing
 def history(story_id,revision):
     with db.connection() as c:
         defects=c.execute('SELECT * FROM product_defects WHERE story_id=%s AND revision=%s ORDER BY created_at',(story_id,revision)).fetchall()
-        attempts=c.execute('SELECT scope,attempt,source_digest,evidence,decision,created_at FROM repair_history WHERE story_id=%s AND revision=%s ORDER BY created_at',(story_id,revision)).fetchall()
+        attempts=c.execute('SELECT id,scope,attempt,source_digest,evidence,decision,created_at FROM repair_history WHERE story_id=%s AND revision=%s ORDER BY created_at',(story_id,revision)).fetchall()
     return {'defects':defects,'attempts':attempts}
 
 
@@ -36,12 +36,16 @@ def assess(story,scope,attempt,files,findings,evidence,owner,actual_failure=Fals
         previous=c.execute('SELECT * FROM repair_history WHERE story_id=%s AND revision=%s AND scope=%s AND attempt=%s AND source_digest=%s',
             (story['id'],story['revision'],scope,attempt,digest)).fetchone()
     if previous:return previous['decision']
+    with db.connection() as c:
+        previous_attempts=c.execute('SELECT source_digest,evidence,decision FROM repair_history WHERE story_id=%s AND revision=%s AND scope=%s ORDER BY created_at DESC LIMIT 3',(story['id'],story['revision'],scope)).fetchall()
     models=[Finding.model_validate(f) for f in findings]
     decision=generate(story['id'],'system_analyst',Triage,{'story':story['text'],'answers':story['answers'],'scope':scope,
-        'findings':[f.model_dump() for f in models],'evidence':evidence,'files':files,
+        'findings':[f.model_dump() for f in models],'evidence':evidence,'previous_attempts':previous_attempts,'files':files,
         'platform_files':['Dockerfile','docker-compose.yml','install.md','runtime-requirements.lock'],
-        'instruction':'Классифицируй КАЖДОЕ замечание по index. confirmed — доказанный дефект реализации; dismissed — доказуемо ошибочное замечание с обоснованием (например, файл добавляет платформа); technical — отсутствующая возможность/необходимость смены подхода; product — меняются требования/объём/внешние условия и нужно решение PM. Не подменяй требование более простым. Реальный провал теста нельзя просто отклонить. next_action: конкретный технический подход для исполнителя.'},
+        'instruction':'Классифицируй КАЖДОЕ замечание по index. confirmed — доказанный дефект реализации; dismissed — доказуемо ошибочное замечание с обоснованием (например, файл добавляет платформа); technical — отсутствующая возможность/необходимость смены подхода; product — меняются требования/объём/внешние условия и нужно решение PM. Не подменяй требование более простым. Реальный провал теста нельзя просто отклонить. next_action: конкретный технический подход для исполнителя. Изучи previous_attempts: повторный провал требует смены подхода, а не того же совета.'},
         result_role=f'triage_{scope}_{attempt}_{digest[:16]}')
+    if evidence.get('external_change'):
+        decision=Triage(findings=[{'index':i,'decision':'technical','reason':'Ветка изменена вне подтверждённой версии: требуется сверка аналитиком, автоматическая перезапись запрещена.'} for i in range(len(models))],next_action='Сверить фактический head и авторство изменений, сохранить обе версии и определить безопасную новую задачу.')
     validate_triage(models,decision,actual_failure)
     confirmed=[];escalate=None
     for disposition in decision.findings:
@@ -63,7 +67,8 @@ def assess(story,scope,attempt,files,findings,evidence,owner,actual_failure=Fals
             c.execute('UPDATE product_defects SET status=%s,task_id=%s,documentation_url=%s,resolution=%s WHERE id=%s',
                 (status,task_id,page,Jsonb({'reason':disposition.reason,'next_action':decision.next_action}),defect['id']))
         if status=='CONFIRMED':
-            set_tracker_status(task_id,'IN_PROGRESS');confirmed.append({'id':str(defect['id']),'task_id':task_id,'finding':finding})
+            set_tracker_status(task_id,'IN_PROGRESS')
+            if not any(d['id']==str(defect['id']) for d in confirmed):confirmed.append({'id':str(defect['id']),'task_id':task_id,'finding':finding})
         elif status in ['TECHNICAL','PRODUCT']:escalate=status
     # A repeated issue with no verified resolution is a stagnation signal, never a cost/call budget.
     with db.connection() as c:
@@ -73,14 +78,21 @@ def assess(story,scope,attempt,files,findings,evidence,owner,actual_failure=Fals
     result={'defects':confirmed,'next_action':decision.next_action,'escalation':escalate,'stagnation':same>=2,
         'dispositions':[d.model_dump(mode='json') for d in decision.findings]}
     if result['stagnation']:result['escalation']='TECHNICAL'
+    if result['escalation']=='TECHNICAL':
+        from app.config import settings
+        page=knowledge.ensure_page(story['id'],f"r{story['revision']}:analysis:{scope}:{attempt}",'Требуется техническое решение',
+            '# Разбор остановки\n\n'+json.dumps({'scope':scope,'source_digest':digest,'evidence':evidence,'previous_attempts':previous_attempts,'next_action':decision.next_action},ensure_ascii=False,default=str,indent=2))
+        result['analysis_task_id']=tracker.ensure(story['id'],f"r{story['revision']}:analysis:{scope}:{attempt}",'Выбрать технический подход: '+scope,
+            'Причина: повторный провал или техническое препятствие.\nСледующее действие: '+decision.next_action+'\nИстория и доказательства: '+page,
+            1,parent=db.external(story['id'],f"r{story['revision']}:goal")['external_id'],assignee=settings.agent_ids.get('system_analyst'))
     if result['escalation']=='PRODUCT':
         from app.schemas import PMResult
         pm=generate(story['id'],'pm',PMResult,{'delivery_mode':'product','story':story['text'],'answers':story['answers'],'findings':findings,
             'instruction':'Нужна продуктовая развилка. Не меняй согласованные требования. Сформулируй конкретные вопросы заказчику только о требованиях/объёме/внешних условиях.'},result_role=f'rework_pm_{scope}_{attempt}_{digest[:16]}')
         result['questions']=pm.questions or ['Требуется согласовать изменение объёма: '+decision.next_action]
     with db.connection() as c:
-        c.execute('''INSERT INTO repair_history(id,story_id,revision,scope,attempt,source_digest,evidence,decision)
-          VALUES(%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING''',(uuid.uuid4(),story['id'],story['revision'],scope,attempt,digest,Jsonb(evidence),Jsonb(result)))
+        c.execute('''INSERT INTO repair_history(id,story_id,revision,scope,attempt,source_digest,source_files,evidence,decision)
+          VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING''',(uuid.uuid4(),story['id'],story['revision'],scope,attempt,digest,Jsonb(files),Jsonb(evidence),Jsonb(result)))
         db.event(c,story,'repair.assessed',{'scope':scope,'attempt':attempt,'confirmed':len(confirmed),'escalation':result['escalation']},f'{scope}:{attempt}:{digest}')
         if result.get('questions'):c.execute('UPDATE stories SET questions=%s WHERE id=%s',(Jsonb(result['questions']),story['id']))
     if result['escalation']:

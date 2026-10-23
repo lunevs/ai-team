@@ -94,3 +94,11 @@ def report(id:uuid.UUID,data:WorkspaceReceipt,user=Depends(operator)):
         db.event(conn,story,'workspace.checked',{'task_id':row['task_id'],'passed':data.passed,'tests_run':data.tests_run},str(data.operation_id))
         db.enqueue(conn,story['id'])
     return {'state':state}
+
+
+@router.get('/stories/{story_id}/repairs/{attempt_id}/sources')
+def repair_sources(story_id:uuid.UUID,attempt_id:uuid.UUID,user=Depends(current_user)):
+    with db.connection() as c:
+        row=c.execute('SELECT source_files,source_digest,scope,attempt FROM repair_history WHERE id=%s AND story_id=%s',(attempt_id,story_id)).fetchone()
+        if not row:raise HTTPException(404,'Repair attempt not found')
+        return row
