@@ -106,12 +106,6 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
             if call['revision']==story['revision'] and call['state']=='reserved' and call['role'] in activity:
                 cards[call['role']]['current']=activity[call['role']]
     product_status=(story.get('product') or {}).get('status')
-    product_wait={'CHECK_PENDING':'Ждёт host-оператора: сборка и тесты','WAITING_GITHUB':'Ожидает публикации PR',
-        'PUBLISHED':'Ожидает GitHub review и слияния','DEPLOY_READY':'Ожидает запуска продукта',
-        'ACCEPTANCE':'Ожидает приёмки продукта','RELEASE_REVIEW':'Ожидает выпуска в main'}
-    if not stopped and product_status in product_wait:
-        for card in cards.values():
-            if card['remaining']:card['current']=product_wait[product_status]
     execution=story.get('execution') or {}
     active_role={'QA':'qa','ARCHITECT_REVIEW':'system_analyst','DEVELOPING':'data_developer','READY_TO_PUBLISH':'application_developer'}.get(execution.get('status'))
     if active_role and worker_active and not stopped:cards[active_role]['current']={'qa':'Проверяет расчёт витрины','system_analyst':'Проверяет SQL и архитектуру','data_developer':'Разрабатывает SQL-витрину','application_developer':'Готовит отчёт и публикацию'}[active_role]
@@ -126,6 +120,11 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
             card['current']='Ожидает публикации PR'
         elif card['current'] == 'Нет активной задачи' and card['remaining']:
             card['current'] = ('Ожидает одобрения спецификации' if story.get('approved') else 'Ожидает одобрения плана') if story['status'] == 'PLAN_REVIEW' else queued_activity(card, closed_keys, task_titles, worker_active)
+    if story.get('delivery_mode')=='product' and product_status and (not stopped or (story['status']=='BLOCKED' and product_status=='ESCALATED' and not story.get('questions') and not story.get('error_type'))):
+        current_results={result['role'] for result in results if result['revision']==story['revision']}
+        active_roles={call['role'] for call in calls if call['revision']==story['revision'] and call['state']=='reserved'} if worker_active else set()
+        for role,card in cards.items():
+            card['current']=product_activity(role,product_status,current_results,role in active_roles,card['current'])
     return {'agents': list(cards.values()), 'tracker_available': tracker_available,
             'scope': 'story', 'revision': story['revision']}
 
@@ -135,11 +134,46 @@ def queued_activity(card, closed_keys, task_titles, worker_active):
     if not pending:
         if card['role']=='system_analyst':
             return 'Ждёт формулировки цели продуктовым менеджером'
-        return 'Готовится сформулировать цель' if worker_active else 'Ждёт запуска worker для формулировки цели'
+        return 'Готовится сформулировать цель' if worker_active else 'Ждёт возобновления работы команды'
     title = pending['title']
     dependencies = [task_titles.get(key, key) for key in pending['depends_on'] if key not in closed_keys]
     if dependencies:
         return 'Ждёт завершения: ' + '; '.join(dependencies) + '. Затем: ' + title
     if not worker_active:
-        return 'Ждёт запуска worker. Следующая задача: ' + title
+        return 'Ждёт возобновления работы команды. Затем: ' + title
     return 'Готовится приступить к задаче: ' + title
+
+
+def product_activity(role, status, results, active, fallback):
+    """Describe each person's evidence-backed progress, not the shared machine stage."""
+    activity={'pm':'Уточняет цель и требования','financial_analyst':'Описывает показатели и правила расчёта',
+        'designer':'Продумывает оформление результата','data_developer':'Продумывает хранение и подготовку данных',
+        'application_developer':'Создаёт приложение','qa':'Проверяет приложение',
+        'system_analyst':'Проверяет устройство и надёжность решения'}
+    if active:
+        return activity.get(role,fallback)
+    prepared={'pm':('pm','Цель и требования подготовлены'),
+        'financial_analyst':('product_financial_analyst','Описание показателей подготовлено'),
+        'designer':('product_designer','Оформление результата подготовлено'),
+        'data_developer':('product_data_developer','Схема хранения данных подготовлена'),
+        'application_developer':('product_solution','Приложение подготовлено'),
+        'qa':('product_qa','Проверка приложения завершена'),
+        'system_analyst':('product_review','Проверка устройства решения завершена')}
+    key,summary=prepared[role]
+    if status=='ESCALATED':
+        if role=='application_developer':return 'Приложение требует доработки после проверки'
+        if role=='qa':return 'Проверка завершена; ждёт исправлений' if key in results else 'Ждёт исправлений для повторной проверки'
+        if role=='system_analyst':return 'Проверка решения завершена; ждёт доработок' if key in results else 'Ждёт разбора замечаний к решению'
+    if key in results:
+        if role=='application_developer' and status=='CHECK_PENDING':
+            return summary+'; ждёт проверки'
+        return summary
+    if status=='CHECK_PENDING':
+        if role=='qa':return 'Ждёт запуска проверки приложения'
+        if role=='system_analyst':return 'План подготовлен; ждёт результатов проверки' if 'system_analyst' in results else 'Ждёт результатов проверки приложения'
+    if status in {'WAITING_GITHUB','PUBLISHED'}:
+        return 'Ждёт согласования изменений перед запуском'
+    if status=='DEPLOY_READY':return 'Ждёт запуска готового приложения'
+    if status=='ACCEPTANCE':return 'Ждёт вашей оценки результата'
+    if status in {'RELEASE_REVIEW','BUSINESS_ACCEPTED','FINALIZING_RELEASE'}:return 'Ждёт окончательного согласования выпуска'
+    return fallback
