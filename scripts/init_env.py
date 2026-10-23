@@ -7,6 +7,7 @@ path = Path('.env')
 text = path.read_text() if path.exists() else ''
 keys = {line.split('=', 1)[0].strip() for line in text.splitlines() if '=' in line}
 values = {
+    'PRODUCT_OPERATOR_TOKEN': secrets.token_hex(32),
     'POSTGRES_PASSWORD': secrets.token_hex(24),
     'OPENPROJECT_DB_PASSWORD': secrets.token_hex(24),
     'APP_DB_PASSWORD': secrets.token_hex(24),

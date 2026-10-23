@@ -52,8 +52,11 @@ def run(story_id):
         for role,instruction in [
             ('financial_analyst','Опиши user stories, экономические проверки результата, единицы и граничные случаи. Если нет финансовых расчётов, отметь это. files оставь пустым.'),
             ('designer','Опиши правила представления результата, единицы и подписи. files оставь пустым.'),
-            ('data_developer','Спроектируй продуктовые данные, миграции и тестовые данные при необходимости. Не загружай внешние данные до отдельной задачи. Файлы только .py/.sql/.json/.md; не более двух небольших файлов. БД через PRODUCT_DATABASE_URL, приложение получает DATABASE_URL; миграции должны быть идемпотентны.')]:
+            ('data_developer','Спроектируй продуктовые данные, миграции и тестовые данные при необходимости. Не загружай внешние данные до отдельной задачи. Файлы только внутри data/ или migrations/ (.py/.sql/.json/.md/.csv); не более двух небольших файлов. БД через PRODUCT_DATABASE_URL, приложение получает DATABASE_URL; миграции должны быть идемпотентны.')]:
             contribution=generate(story_id,role,Contribution,context|{'instruction':instruction},result_role='product_'+role)
+            if role!='data_developer' and contribution.files:raise db.Conflict('This role contributes specifications only')
+            if role=='data_developer' and any(not name.startswith(('data/','migrations/')) for name in contribution.files):
+                raise db.Conflict('Data developer sources must stay in data/ or migrations/')
             contributions[role]=contribution.model_dump()
         solution=generate(story_id,'application_developer',ProductSolution,context|{'contributions':contributions,
             'instruction':'Создай полноценные исходники самостоятельного продукта и независимые unittest-тесты. Включи app.py, tests/test_product.py и нужные модули/миграции. Разрешены stdlib и библиотеки из доверенного lock: httpx, psycopg, openpyxl, pandas, fastapi, streamlit. Предпочти компактный код stdlib. service: app.py запускает HTTP на 0.0.0.0:8000, GET /health и GET /result возвращают JSON или результат; job: app.py завершается с кодом 0 и пишет /data/result.json. Не запускай сервер при импорте. Результаты файлов в /data, БД только DATABASE_URL, нет сети при тестировании. Никогда не читай окружение/файлы команды. Dockerfile/Compose/install.md будут сгенерированы платформой; не включай их в files. В operating_notes опиши реальные миграции, получение результата и backup. До 6 файлов, код до 10000 символов.'},result_role='product_solution')
@@ -68,7 +71,7 @@ def run(story_id):
         page=knowledge.ensure_page(story_id,f"r{story['revision']}:product",solution.title,
             '# Самостоятельный продукт\n\n'+solution.architecture+'\n\n## Эксплуатация\n'+solution.operating_notes+
             '\n\n## Паспорт поставки\n```json\n'+json.dumps(metadata,ensure_ascii=False,indent=2)+'\n```')
-        update(record['id'],status='CHECK_PENDING',specification=solution.model_dump(),package=manifest,documentation_url=page)
+        update(record['id'],status='CHECK_PENDING',specification=solution.model_dump()|{'contributions':contributions},package=manifest,documentation_url=page)
         with db.connection() as conn:db.event(conn,story,'product.packaged',{'product_key':record['product_key'],'sha256':manifest['sha256']},f"{record['id']}:packaged")
         return
     if record['status']=='CHECKED':
@@ -77,6 +80,7 @@ def run(story_id):
         review=generate(story_id,'system_analyst',ProductReview,{'story':story['text'],'solution':record['specification'],'qa':qa.model_dump(),
             'instruction':'Проверь архитектуру, безопасность, самостоятельность, миграции и исходники. Не одобряй при серьёзных замечаниях; GitHub review остаётся отдельным.'},result_role='product_review')
         update(record['id'],review={'qa':qa.model_dump(),'architecture':review.model_dump()},status='READY_TO_PUBLISH' if qa.approved and review.approved else 'ESCALATED')
+        if not qa.approved or not review.approved:sync_status(story_id,'BLOCKED')
         record=get(story_id)
     if record['status'] in {'READY_TO_PUBLISH','WAITING_GITHUB','PUBLISHED'}:
         publish(story,record)
@@ -93,15 +97,28 @@ def run(story_id):
         if gate['eligible']:
             tagged=broker('/finalize-release',{'epic_id':release['epic_id'],'number':release['number'],
                 'commit':release['commit'],'version':record['version']})
-            update(record['id'],status='DONE',git=record['git']|{'tag':tagged})
+            if tagged.get('pending'):return
+            update(record['id'],git=record['git']|{'tag':tagged})
+            from app.config import settings
+            ids={p['task_id'] for p in record['git']['pulls']}|{p['epic_id'] for p in record['git']['pulls']}
+            goal=db.external(story_id,f"r{story['revision']}:goal")
+            if goal:ids.add(goal['external_id'])
+            for id in sorted(ids):
+                tracker.honor_remote_stop(story_id)
+                item=tracker.request('/api/v3/work_packages/'+str(id))
+                tracker.request('/api/v3/work_packages/'+str(id),'PATCH',{'lockVersion':item['lockVersion'],
+                    '_links':{'status':{'href':'/api/v3/statuses/'+str(settings.status_ids['DONE'])}}})
+            knowledge.ensure_page(story_id,f"r{story['revision']}:product-acceptance",'Приёмка и выпуск продукта',
+                '# Продукт принят и выпущен\n\n'+record['documentation_url']+'\n\n'+json.dumps(tagged,ensure_ascii=False,indent=2))
             sync_status(story_id,'DONE')
+            update(record['id'],status='DONE')
 
 
 
 def publish(story,record):
     from app.delivery import broker
     if record['status']!='PUBLISHED':
-        readiness=broker('/ready',method='GET')
+        readiness=broker('/ready')
         if not readiness.get('configured') or not readiness.get('base_ready'):
             update(record['id'],status='WAITING_GITHUB');return
         metadata,files=inspect_package(package_bytes(record))
@@ -117,8 +134,21 @@ def publish(story,record):
                 else:
                     # Distinct task documentation retains per-task traceability without overwriting the package.
                     report={'task':task,'product':metadata['product_key'],'package_sha256':record['package']['sha256'],
+                        'contribution':record['specification'].get('contributions',{}).get(task['role']),
                         'checks':record['qa'],'reviews':record['review']}
                     selected={prefix+f"task-{task_id}.json":json.dumps(report,ensure_ascii=False,indent=2).encode()}
+                    if task['role']=='data_developer':
+                        for name in (record['specification'].get('contributions',{}).get('data_developer') or {}).get('files',{}):
+                            if not name.startswith(('data/','migrations/')):raise db.Conflict('Invalid data contribution path')
+                            selected[prefix+name]=files[name]
+                result_page=knowledge.ensure_page(story['id'],f"r{story['revision']}:product-result:{task['key']}",
+                    'Результат: '+task['title'], '# Результат задачи\n\nПакет: '+record['package']['sha256']+'\n\n'+record['documentation_url']+
+                    '\n\n```json\n'+json.dumps({'contribution':record['specification'].get('contributions',{}).get(task['role']),
+                        'qa':record['qa'],'reviews':record['review']},ensure_ascii=False,indent=2)+'\n```')
+                item=tracker.request('/api/v3/work_packages/'+str(task_id))
+                if result_page not in item['description']['raw']:
+                    tracker.request('/api/v3/work_packages/'+str(task_id),'PATCH',{'lockVersion':item['lockVersion'],
+                        'description':{'format':'markdown','raw':item['description']['raw']+'\n\nРезультат: '+result_page}})
                 tasks.append({'task_id':task_id,'epic_id':epic_id,'role':task['role'],
                     'files':{k:base64.b64encode(v).decode() for k,v in selected.items()}})
         if not any(t['role']=='application_developer' for t in tasks):raise db.Conflict('Plan requires an application developer task')
@@ -126,6 +156,12 @@ def publish(story,record):
             'documentation_url':record['documentation_url'],'tasks':tasks,'product_package':True})
         update(record['id'],status='PUBLISHED',git=git)
         record=get(story['id'])
+    for pull in record['git']['pulls']:
+        tracker.honor_remote_stop(story['id'])
+        item=tracker.request('/api/v3/work_packages/'+str(pull['task_id']))
+        if pull['pull_request_url'] not in item['description']['raw']:
+            tracker.request('/api/v3/work_packages/'+str(pull['task_id']),'PATCH',{'lockVersion':item['lockVersion'],
+                'description':{'format':'markdown','raw':item['description']['raw']+'\n\nPR: '+pull['pull_request_url']+'\nПроверенный commit: '+pull['commit']}})
     gate=broker('/gate',{'pulls':record['git']['pulls']})
     if gate['eligible']:
         update(record['id'],status='DEPLOY_READY')
@@ -133,4 +169,4 @@ def publish(story,record):
 
 def public(record):
     if not record:return None
-    return {k:record[k] for k in ['id','product_key','version','status','package','qa','review','git','documentation_url','deployment','accepted','created_at','updated_at']}
+    return {k:record[k] for k in ['id','story_id','product_key','version','status','package','qa','review','git','documentation_url','deployment','accepted','created_at','updated_at']}

@@ -1,6 +1,7 @@
 """Allowlisted external adapters. Call under the per-story advisory lock."""
 import json
 import time
+from urllib.parse import quote
 from typing import Protocol
 import httpx
 from app import db
@@ -59,7 +60,10 @@ class OpenProject:
         if cached: return cached['external_id']
         db.active(story_id)
         marker=f'[AI:{story_id}:{key}]'
-        for item in self.collection(f'/api/v3/projects/{settings.project_id}/work_packages?pageSize=100',role):
+        # Narrow by stable title, then verify the exact immutable description marker.
+        # The operator '~' is verified against the local OpenProject API; no full-project scan.
+        filters=quote(json.dumps([{'subject':{'operator':'~','values':[title[:200]]}}]),safe='')
+        for item in self.collection(f'/api/v3/projects/{settings.project_id}/work_packages?pageSize=100&filters='+filters,role):
             if marker in item.get('description',{}).get('raw',''):
                 db.save_external(story_id,key,item['id'],settings.op_public_url+'/work_packages/'+str(item['id']))
                 return item['id']
