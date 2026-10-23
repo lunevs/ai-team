@@ -13,6 +13,9 @@ def test_local_store_is_immutable_and_checks_legacy_manifests(tmp_path,monkeypat
     with pytest.raises(IntegrityError):read_artifact(id,'report.xlsx',manifest)
     with pytest.raises(ValueError):s.put(id,'../../.env',b'x')
     with pytest.raises(ValueError):s.put('not-uuid','qa.json',b'x')
+    outside=tmp_path/'outside';outside.mkdir();linked=uuid.uuid4();(tmp_path/linked.hex).symlink_to(outside,target_is_directory=True)
+    with pytest.raises(IntegrityError):s.put(linked,'qa.json',b'x')
+    assert list(outside.iterdir())==[]
 
 def test_s3_requires_tls_and_explicit_local_exception(monkeypatch):
     monkeypatch.setenv('S3_ENDPOINT','http://external.example')

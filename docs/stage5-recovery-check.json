@@ -1,0 +1,27 @@
+{
+  "production_replaced": false,
+  "checks": [
+    "encrypted deployment configuration restored byte-for-byte",
+    "PostgreSQL stories, paid ledger, checkpoints, synthetic checksum and OpenProject controls match source",
+    "restored MariaDB BookStack pages match source",
+    "external-host TLS verify-full, negative hostname, restored artifact SHA256 and runtime privilege boundary"
+  ],
+  "postgres": {
+    "ai_team": {
+      "stories": 36,
+      "calls": 133,
+      "executions": 10,
+      "checkpoints": 316,
+      "checksum": "f14b35faad2a5456fa4e08e1c700520b6ad945b3296c77280d84430118c2959f"
+    },
+    "openproject": {
+      "tasks": 292,
+      "users": 11
+    }
+  },
+  "artifacts_verified": 63,
+  "tls_verified": true,
+  "wrong_hostname_rejected": true,
+  "runtime_ddl_and_source_delete_denied": true,
+  "status": "passed"
+}

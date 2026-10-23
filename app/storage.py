@@ -31,7 +31,9 @@ class LocalStore:
     def __init__(self,root=None):self.root=Path(root or os.getenv('ARTIFACT_ROOT','/data/artifacts'))
     def path(self,run_id,name):return self.root/identity(run_id,name)
     def put(self,run_id,name,content):
-        manifest=descriptor(content,'local');path=self.path(run_id,name);path.parent.mkdir(parents=True,exist_ok=True)
+        manifest=descriptor(content,'local');path=self.path(run_id,name)
+        if path.is_symlink() or path.parent.is_symlink():raise IntegrityError('Artifact path is a link')
+        path.parent.mkdir(parents=True,exist_ok=True)
         # Hard-link publishes an already complete file atomically without replacing an existing artifact.
         fd,temporary=tempfile.mkstemp(dir=path.parent)
         try:

@@ -1,0 +1,33 @@
+{
+  "backend": "mock",
+  "database": "isolated restored PostgreSQL with TLS",
+  "storage": "real local Garage/S3",
+  "checks": [
+    "legacy local report downloads through new API from restored volume with same SHA256",
+    "full mock workflow on restored TLS PostgreSQL with real tracker/BookStack/sandbox",
+    "actual QA defect repaired on attempt 2; 24 correct rows",
+    "all nine artifacts stored in real S3 and downloaded by separate read-only API credential",
+    "worker restart clears tmp workspace; retry preserves usage/manifests and S3 download",
+    "S3 rejects PUT with the actual API reader key"
+  ],
+  "story_ids": [
+    "03830dbe-189d-4e04-b84b-f42776045b33"
+  ],
+  "status": "passed",
+  "usage": {
+    "calls": 7,
+    "tokens": 700,
+    "estimated_cost_usd": 0.0,
+    "estimated_calls": 0,
+    "backends": [
+      "mock"
+    ],
+    "models": [
+      "mock/contracts-v1"
+    ]
+  },
+  "rows": 24,
+  "artifacts": 9,
+  "qa_attempts": 2,
+  "production_database_used": false
+}

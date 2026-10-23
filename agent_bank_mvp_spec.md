@@ -1,6 +1,6 @@
 # Техническое задание: Bank AI Delivery Team — MVP
 
-Версия: 1.10 • 22 октября 2026 • Язык реализации и документации: русский (идентификаторы в коде — английские)
+Версия: 1.11 • 23 октября 2026 • Язык реализации и документации: русский (идентификаторы в коде — английские)
 
 ## 1. Идея и цель
 
@@ -333,6 +333,7 @@ JSON-логи, события, trace IDs и учёт usage вводятся с �
 | 20 октября 2026 | 1.6 | Начат этап 0: Compose, реальные API-проверки, OpenRouter, GitHub, документация и измерения ресурсов | Результаты и ограничения перечислены в разделе 21 |
 | 20 октября 2026 | 1.7 | Реализован вертикальный срез этапа 1, runtime-доступы согласованы, подготовлены PR #4–7 | 7 unit/integration, 13 mock e2e, реальный OpenRouter и восстановление checkpoint прошли; раздел 22 |
 | 22 октября 2026 | 1.10 | Этап 4: опциональный профиль наблюдаемости, безопасный экспорт, durable gauges, Grafana и бюджетные правила | 44 unit/integration, реальные Loki/Tempo/Prometheus/Grafana, сквозной mock; отчёты и ограничения — раздел 26 |
+| 23 октября 2026 | 1.11 | Этап 5: local/S3 storage, внешняя DB/TLS, fail-closed private stub, encrypted backup/restore и итоговая матрица | 52 unit/integration, восстановление 10 volumes/63 артефактов, полный S3 mock E2E; раздел 27 |
 
 ## 21. Фактические результаты этапа 0 (20 октября 2026)
 
@@ -527,7 +528,7 @@ Budget bar использует instant-query с текущими значени
 
 Браузерная проверка: в Loki раскрыты поля лога и ссылка Application traces; адрес ссылки открыл Tempo Explore с 64 spans, двумя сервисами и общим trace_id итогового E2E. Проверены видимые операции PM/SA/Financial/Data Developer, SQL, QA, tracker и knowledge. При первоначальной загрузке одного JS chunk понадобилось обновление страницы; точный static URL ответил 200, после обновления trace view загрузился.
 
-## 27. Этап 5 — переносимость и восстановление (в реализации)
+## 27. Этап 5 — переносимость и восстановление (готово к review/приёмке)
 
 Заказчик согласовал PR #28–31; они слиты в release/263 (d0e5498). Новый эпик №288 / версия epic-288-v0.6.0, release/288. Задачи №289 storage local/S3 (Application Developer), №290 external PostgreSQL/private LLM stub (System Analyst), №291 backup/restore (Data Developer), №292 итоговые проверки/документация (QA). Отдельные feature/<ID>, PR в release/288, порядок 289 → 290 → 291 → 292. System Analyst назначает исполнителей; самостоятельного агента Architect нет.
 
@@ -539,6 +540,16 @@ Budget bar использует instant-query с текущими значени
 
 Задача №290: APP_DATABASE_URL, APP_MIGRATION_DATABASE_URL и SANDBOX_DATABASE_URL раздельно переопределяют три роли PostgreSQL. Runtime policy требует verify-full и явный CA file для внешнего hostname; URL/credentials не журналируются. Для sandbox внешняя сеть подключается только операторским override, по умолчанию сохраняется закрытая execution-сеть. LLM_BACKEND=private выбирает PrivateLLMStub: явный CapabilityError до резервирования бюджета, без сетевых вызовов, mock/OpenRouter fallback или заявления об интеграции частной модели. Версия сервиса 0.6.0; SQL runtime contract version=4 не изменялся.
 
-Заготовка backup будет храниться в исключённом из Git и Docker build context каталоге .backups (0700), ключ — отдельный .backup-key (0600). Снимок всех persistent volumes планируется при краткой остановке только сервисов ai-team для согласованности PostgreSQL, BookStack/MariaDB, приложений и Git workspace. Шифрование AES-256-CBC/PBKDF2 OpenSSL дополняется отдельным HMAC-SHA256 manifest/ciphertext (encrypt-then-MAC); до восстановления проверяются подпись и хеш. Восстановление допускается только в новые volumes с отдельным именем; рабочие volumes не перезаписываются. Локальный .env включается только внутрь зашифрованной копии; ключ и резервные копии надо хранить отдельно от потерянного компьютера, причём ключ — отдельно от архива; этот этап не создаёт облачное хранилище или автоматическую внешнюю доставку backups.
+Зашифрованный backup хранится в исключённом из Git и Docker build context каталоге .backups (0700), ключ — отдельный .backup-key (0600). Снимок всех persistent volumes выполняется при краткой остановке только сервисов ai-team для согласованности PostgreSQL, BookStack/MariaDB, приложений и Git workspace. Шифрование AES-256-CBC/PBKDF2 OpenSSL дополняется отдельным HMAC-SHA256 manifest/ciphertext (encrypt-then-MAC); до восстановления проверяются подпись и хеш. Восстановление допускается только в новые volumes с отдельным именем; рабочие volumes не перезаписываются. Локальный .env включается только внутрь зашифрованной копии; ключ и резервные копии надо хранить отдельно от потерянного компьютера, причём ключ — отдельно от архива; этот этап не создаёт облачное хранилище или автоматическую внешнюю доставку backups.
 
 Задача №291: scripts/backup_installation.py реализует операторские snapshot/verify/restore. Реальный cold snapshot 10 volumes успешно создан, AES/PBKDF2 и HMAC проверены; исходные сервисы возвращены healthy. Неизменённый deployment .env добавлен в аутентифицированный encrypted snapshot; secrets не выводились. Восстановление запускается только в новые ai-team-dr-* volumes; production volumes и .env не перезаписываются. Инструкции и облачная схема ограничений — docs/operations.md. Тесты аутентичности отвергают изменённый ciphertext/manifest и рабочий либо существующий restore prefix до создания volumes.
+
+На 23.10.2026: восстановление проверено на отдельной PostgreSQL с TLS и MariaDB, данные production не заменялись. Контроли: 36 историй, 133 LLM reservations/calls, 10 execution runs, 316 checkpoints, 292 work packages; synthetic checksum совпал. Прочитаны и проверены SHA256/size 63 прежних артефактов. Runtime не смог CREATE public/DELETE synthetic; неправильный hostname TLS отвергнут. 52 unit/integration passed; полный S3 workflow проверяется в №292. Матрица всех 13 критериев и явно незакрытые человеческие gates — docs/acceptance.md.
+
+Итог №292 на 23.10.2026: 52 unit/integration и 6 host E2E checks passed. Новая история 03830dbe-189d-4e04-b84b-f42776045b33 существовала только в восстановленной БД; mock backend, 7 calls/700 tokens/$0. Реальные OpenProject/BookStack/sandbox использованы с явным согласованием плана/аналитики; QA исправила дефект со второй попытки, 24 строки верны. Все 9 файлов сохранены в реальный локальный S3 (Garage) и скачаны отдельным API reader с совпадающими SHA256/size. Legacy local Excel из реального прежнего прогона прочитан новым API. Restart удалил временный workspace, повтор не изменил usage/manifests и скачивание S3; PUT с reader credentials отвергнут самим S3. История отменена, тестовый worker/API/sandbox/broker удалены в finally. Production DB не использовалась для новой истории, платных LLM/GitHub writes не было. Отчёт docs/stage5-check.json.
+
+Подготовка disposable fixtures и проверка воспроизводятся scripts/prepare_stage5_checks.py, check_restored_installation.py, run_stage5_checks.py; очистка — cleanup_stage5_checks.py, backup/key сохраняются. Единичный первоначальный restore с закрытым stdin Docker завершился безопасным отказом только в новом volume; исправлен интерактивный stdin, итоговое восстановление прошло на новом префиксе. Временный API создаёт все сетевые подключения до start и ожидает readiness. Исходные данные и чужие истории не заменялись.
+
+PR задач: №289 — [#32](https://github.com/lunevs/ai-team/pull/32), №290 — [#33](https://github.com/lunevs/ai-team/pull/33), №291 — [#34](https://github.com/lunevs/ai-team/pull/34). Финальная проверка №292 включает зависимости; слияние 289 → 290 → 291 → 292 в release/288, затем человеческая приёмка. Реальная бизнес-история №219 остаётся ACCEPTANCE до отдельного решения пользователя; release→main→tag→DONE автоматически не исполнялся.
+
+Основной запуск обновлён до 0.6.0: API ready, прежний реальный Excel имеет исходный SHA256, штатные настройки остаются local/OpenRouter. Usage истории №219 — прежние 8 вызовов; статус ACCEPTANCE. Временные DR/S3 контейнеры и оба набора тестовых volumes удалены, зашифрованный snapshot и отдельный ключ сохранены только локально в ignored paths.
