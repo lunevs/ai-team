@@ -159,7 +159,7 @@ docker compose up -d worker
 
 ```sh
 # Unit без сети и секретов:
-docker run --rm --network none ai-team-app:0.5.0 python -m pytest -q -p no:cacheprovider tests/unit
+docker run --rm --network none ai-team-app:0.6.0 python -m pytest -q -p no:cacheprovider tests/unit
 # Integration проверяет реальный PostgreSQL. На время теста остановить worker,
 # чтобы он не забирал технические задания тестов из той же локальной очереди:
 docker compose stop worker
@@ -272,3 +272,31 @@ docker compose up -d --no-deps --force-recreate api worker ui
 JSON stdout остаётся включён. Volumes сохраняются. Повторный bootstrap снова включает локальный OTLP endpoint.
 
 `python3 scripts/run_stage4_checks.py` — отдельный локальный opt-in E2E, временно останавливает штатный worker и профиль для замера RAM. Создаёт только свои синтетические истории, запускает scoped mock worker и tokenless Git broker, проверяет реальные SQL/QA/Bug/BookStack, рестарт, privacy canaries, бюджетный alert и отказ Collector. В `finally` отменяет свои истории, удаляет только два тестовых контейнера и возвращает штатный worker. На время теста не создавайте новые истории. Денежные LLM-вызовы и GitHub PR в этом тесте отсутствуют. Отчёты `docs/stage4-*.json` отделены от предыдущего реального OpenRouter-прогона.
+
+## Переносимость и восстановление — этап 5
+
+Новая версия приложения — `ai-team-app:0.6.0`. Основной режим остаётся local volumes + OpenRouter. Инструкции local/S3, внешней PostgreSQL с TLS, private stub, encrypted backup/restore и план AWS/Yandex — [docs/operations.md](docs/operations.md). Матрица приёмки и неподтверждённые возможности — [docs/acceptance.md](docs/acceptance.md).
+
+```sh
+docker compose build api worker ui sandbox git-broker
+docker compose --profile ui --profile observability up -d --no-deps api worker ui sandbox git-broker
+# Backup останавливает только сервисы ai-team на время согласованного снимка:
+python3 scripts/backup_installation.py snapshot .backups/my-backup
+python3 scripts/backup_installation.py verify .backups/my-backup
+```
+
+Изолированный restore/E2E использует фиксированный disposable prefix `ai-team-dr-5e000002`, отдельную БД/TLS, reader/writer S3 и mock worker. Выполнять до новых изменений в трекере/БД, чтобы read-only controls можно было сверить с исходным snapshot:
+
+```sh
+python3 scripts/prepare_stage5_checks.py .backups/my-backup
+python3 scripts/check_restored_installation.py
+python3 scripts/run_stage5_checks.py
+```
+
+Не подключать восстановленный worker к production GitHub token или OpenRouter. Скрипт E2E создаёт и отменяет только собственную историю в восстановленной БД и реальные служебные задачи/страницы OpenProject/BookStack; production DB не используется. Тестовая S3-память Garage временная; после удаления тестовых сервисов её объекты не обещаются доступными. При ошибке restore рабочие volumes не перезаписываются. Ключ `.backup-key` хранить отдельно от зашифрованного архива; без него восстановление невозможно. `.env` внутри snapshot зашифрован, но после restore появляется отдельная private копия в `.local` — не публиковать её.
+
+После проверки удалить только временные fixtures (исходный backup и ключ сохраняются):
+
+```sh
+python3 scripts/cleanup_stage5_checks.py --remove-volumes
+```
