@@ -7,7 +7,7 @@ import streamlit as st
 
 st.set_page_config(page_title='AI Delivery Team',page_icon='🏦',layout='wide')
 st.title('Bank AI Delivery Team')
-st.caption('Синтетические данные · Планирование, аналитика, расчёт и отчёт · Этапы 1–3')
+st.caption('AI-команда · Самостоятельные продукты и банковская аналитика · Публичные и синтетические данные')
 API=os.getenv('API_URL','http://api:8000')
 TOKEN=os.getenv('APP_API_TOKEN','')
 
@@ -26,8 +26,13 @@ def request(path,method='GET',data=None,key=None):
         st.error('API временно недоступен. Повторите запрос: ключ сохранён.')
         return None
 
+def select_product_story(story_id):
+    st.session_state['selected_story']=story_id
+    st.session_state['story_id']=story_id
+
 with st.sidebar:
     st.header('Новая история')
+    mode=st.selectbox('Тип результата',['product','credit_demo'],format_func=lambda x:'Самостоятельный продукт' if x=='product' else 'Кредитное демо')
     with st.form('new-story'):
         text=st.text_area('User story',height=180,placeholder='Создать витрину анализа кредитного портфеля по месяцам…')
         synthetic=st.checkbox('Используются только синтетические или публичные данные')
@@ -36,10 +41,10 @@ with st.sidebar:
         if not synthetic or len(text.strip())<20:
             st.warning('Опишите задачу и подтвердите синтетические данные.')
         else:
-            if st.session_state.get('submitted_text')!=text:
+            if st.session_state.get('submitted_text')!=(mode,text):
                 st.session_state['request_key']=str(uuid.uuid4())
-                st.session_state['submitted_text']=text
-            result=request('/stories','POST',{'text':text,'synthetic_only':True},st.session_state['request_key'])
+                st.session_state['submitted_text']=(mode,text)
+            result=request('/stories','POST',{'text':text,'synthetic_only':True,'delivery_mode':mode},st.session_state['request_key'])
             if result:
                 st.session_state['story_id']=result['story_id']
                 st.session_state['selected_story']=result['story_id']
@@ -52,6 +57,12 @@ with st.sidebar:
             st.session_state['selected_story']=st.session_state.get('story_id') if st.session_state.get('story_id') in ids else ids[0]
         selected=st.selectbox('Истории',ids,key='selected_story',format_func=labels.get)
         st.session_state['story_id']=selected
+    with st.expander('Реестр продуктов'):
+        registered=request('/products') or []
+        if not registered:st.caption('Продуктов пока нет. Создайте user story в режиме самостоятельного продукта.')
+        for product in registered:
+            st.button(product['product_key']+' · '+product['version']+' · '+product['status'],
+                key='registry-'+product['id'],on_click=select_product_story,args=(product['story_id'],))
     st.button('Обновить')
 
 id=st.session_state.get('story_id')
@@ -108,135 +119,184 @@ with st.expander('События'):
     for event in request('/stories/'+id+'/events') or []:
         st.write(f"{event['created_at']} · {event['type']}")
         st.json(event['payload'])
-if story['status']=='IN_PROGRESS' and not story.get('analytics'):st.success('План одобрен. Можно перейти к подготовке аналитической спецификации.')
-
-st.subheader('Аналитическая спецификация · этап 2')
-analytics=story.get('analytics')
-if not analytics:
-    st.caption('Синтетические источники → System Analyst → Financial Analyst → отдельное подтверждение. SQL агентом не выполняется.')
-    if story['status']=='IN_PROGRESS' and story['approved']:
-        if st.button('Подготовить аналитическую спецификацию',type='primary'):
-            if request('/stories/'+id+'/analytics/start','POST',{}):st.rerun()
+if story.get('delivery_mode')=='product':
+    st.subheader('Самостоятельный продукт')
+    product=story.get('product')
+    if not product:
+        st.info('После одобрения плана команда подготовит исходники, тесты и самостоятельный пакет поставки.')
     else:
-        st.caption('Доступно после одобрения плана.')
+        st.write('**'+product['product_key']+' · '+product['version']+'** — '+product['status'])
+        if product.get('documentation_url'):
+            st.link_button('Архитектура и эксплуатация · BookStack',product['documentation_url'])
+        if product.get('package'):
+            st.caption('SHA256 пакета: '+product['package']['sha256'])
+            if st.button('Подготовить пакет к скачиванию'):
+                try:
+                    with httpx.Client(timeout=30) as client:
+                        response=client.get(API+'/products/'+product['id']+'/package',headers={'Authorization':'Bearer '+TOKEN})
+                    if response.status_code==200:
+                        st.download_button('Скачать исходники, Docker и install.md',response.content,
+                            file_name=product['product_key']+'-'+product['version']+'.zip',mime='application/zip')
+                    else:st.error('Пакет временно недоступен')
+                except httpx.TransportError:st.error('API временно недоступен')
+        if product['status']=='CHECK_PENDING':
+            st.info('Пакет ждёт host-оператора: сборка и изолированные тесты. Оператор запускается отдельно от контейнеров команды.')
+        if product.get('qa'):
+            with st.expander('Фактическая проверка контейнера'):st.json(product['qa'])
+        if product.get('review'):
+            with st.expander('Независимые заключения QA и архитектора'):st.json(product['review'])
+        for pr in (product.get('git') or {}).get('pulls',[]):
+            st.link_button('PR задачи #'+str(pr['task_id']),pr['pull_request_url'])
+        release=(product.get('git') or {}).get('release')
+        if release:st.link_button('Релиз в main',release['pull_request_url'])
+        deployment=product.get('deployment') or {}
+        if deployment.get('url'):
+            st.link_button('Открыть развёрнутый продукт',deployment['url']+'/result')
+        if deployment.get('result'):
+            st.write('Результат продукта');st.json(deployment['result'])
+        if product['status']=='ACCEPTANCE' and not product['accepted']:
+            st.caption('Приёмка подтверждает бизнес-результат. Релиз в main требует отдельного review/CI/слияния.')
+            if st.button('Принять самостоятельный продукт',type='primary'):
+                if request('/stories/'+id+'/product/accept','POST',{'revision':story['revision'],'plan_digest':story['plan_digest']}):st.rerun()
+        if product['status'] in ['ESCALATED','DEPLOY_FAILED']:
+            st.warning('Нужен разбор замечаний. Тесты или развёртывание не подтверждены; готовность не заявлена.')
+        if product['status']=='DEPLOY_FAILED':
+            if st.button('Повторить запуск после исправления настроек'):
+                if request('/stories/'+id+'/product/retry-deployment','POST',{'revision':story['revision'],'plan_digest':story['plan_digest']}):st.rerun()
+        if product['status'] in ['WAITING_GITHUB','PUBLISHED','RELEASE_REVIEW'] or product['accepted'] and product['status']=='ACCEPTANCE':
+            st.caption('Ожидаются GitHub-доступ либо независимые review, CI и слияние PR. Автослияния нет.')
+            if st.button('Проверить продвижение продукта'):
+                if request('/stories/'+id+'/product/refresh','POST',{}):st.rerun()
 else:
-    st.write('Статус спецификации: **'+analytics['status']+'**')
-    if analytics['status'] in ['REQUESTED','RUNNING'] and story['status'] in ['BLOCKED','FAILED','CANCELLED']:
-        st.warning('Подготовка спецификации приостановлена: '+story['status'])
-    elif analytics['status'] in ['REQUESTED','RUNNING']:
-        st.info('Аналитики готовят спецификацию. Обновите историю для просмотра результата; карточки команды обновляются автоматически.')
-    if analytics.get('source_spec'):
-        with st.expander('Source-to-target mapping и качество данных',expanded=True):
-            st.write(analytics['source_spec']['grain'])
-            st.dataframe(analytics['source_spec']['mapping'],column_order=['target','source','rule'],hide_index=True,use_container_width=True)
-            for rule in analytics['source_spec']['data_quality_rules']:st.write('• '+rule)
-    if analytics.get('financial_spec'):
-        spec=analytics['financial_spec']
-        with st.expander('Паспорт метрик и экономический смысл',expanded=True):
-            st.json(spec['passport'])
-            for label,key in [('Бизнес-правила','business_rules'),('Экономические проверки','economic_checks'),('Пользовательские истории','user_stories'),('Допущения','assumptions')]:
-                st.markdown('**'+label+'**')
-                for item in spec[key]:st.write('• '+item)
-    if analytics.get('reference_rows'):
-        with st.expander('Независимые ожидаемые значения'):
-            st.caption('Python Decimal-эталон по синтетическим источникам. Это не результат SQL-витрины.')
-            st.dataframe(analytics['reference_rows'],hide_index=True,use_container_width=True)
-        st.caption('Checksum источников: '+analytics['dataset_checksum'])
-    if analytics.get('documentation_url'):
-        st.link_button('Спецификация в BookStack',analytics['documentation_url'])
-    if analytics['status']=='REVIEW' and story['status']=='PLAN_REVIEW':
-        st.info('Подтвердите паспорт и mapping этой ревизии. Изменение критериев требует новой ревизии через уточнения.')
-        if st.button('Одобрить аналитическую спецификацию',type='primary'):
-            if request('/stories/'+id+'/analytics/approve','POST',{'revision':story['revision'],'plan_digest':analytics['digest']}):st.rerun()
-    if analytics['status']=='APPROVED':
-        st.success('Спецификация одобрена. Исполнение SQL и QA реализации — этап 3.')
-    elif analytics['status']=='REVIEW':
-        with st.form('analytics-change'):
-            changes=st.text_area('Уточнения, меняющие спецификацию или критерии')
-            if st.form_submit_button('Вернуть на уточнение'):
-                if changes.strip():
-                    result=request('/stories/'+id+'/analytics/revise','POST',{'answers':changes})
-                    if result:st.rerun()
-                else:st.warning('Опишите требуемое изменение.')
+    if story['status']=='IN_PROGRESS' and not story.get('analytics'):st.success('План одобрен. Можно перейти к подготовке аналитической спецификации.')
 
-st.subheader('Расчёт и результат · этап 3')
-execution=story.get('execution')
-if not execution:
-    if analytics and analytics['status']=='APPROVED' and story['status']=='IN_PROGRESS':
-        if st.button('Запустить реализацию и QA',type='primary'):
-            if request('/stories/'+id+'/execution/start','POST',{}):st.rerun()
-    else:st.caption('Доступно после подтверждения аналитической спецификации.')
-else:
-    st.write('Статус исполнения: **'+execution['status']+'** · попытка '+str(execution['attempt'])+' из 3')
-    if execution.get('qa'):
-        with st.expander('Проверки качества',expanded=not execution['qa']['passed']):
-            st.write('QA: '+('пройден' if execution['qa']['passed'] else 'есть замечания'))
-            st.json(execution['qa'])
-    if execution.get('review'):
-        with st.expander('Ревью системного аналитика / архитектора'):
-            st.json(execution['review'])
-            st.caption('Ревью модели дополняет независимое GitHub review.')
-    if execution.get('rows') and (execution.get('qa') or {}).get('passed'):
-        import pandas as pd
-        from decimal import Decimal,ROUND_HALF_UP
-        rows=execution['rows']
-        products=st.multiselect('Продукты',sorted({str(r['product_id']) for r in rows}),default=sorted({str(r['product_id']) for r in rows}))
-        regions=st.multiselect('Регионы',sorted({r['region'] for r in rows}),default=sorted({r['region'] for r in rows}))
-        filtered=[r for r in rows if str(r['product_id']) in products and r['region'] in regions]
-        monthly=[]
-        for month in sorted({r['month'] for r in filtered}):
-            parts=[r for r in filtered if r['month']==month];item={'month':month}
-            for metric in ['balance','dpd30_balance','dpd90_balance','interest_income']:
-                values=[Decimal(str(r[metric])) for r in parts if r[metric] is not None]
-                item[metric]=sum(values) if values else None
-            b,n=item['balance'],item['dpd90_balance']
-            item['npl90_ratio']=(n/b).quantize(Decimal('.000001'),rounding=ROUND_HALF_UP) if b is not None and n is not None and b else None
-            monthly.append(item)
-        if monthly:
-            month=st.select_slider('Месяц показателей',[r['month'] for r in monthly],value=monthly[-1]['month'])
-            current=next(r for r in monthly if r['month']==month)
-            cols=st.columns(3)
-            cols[0].metric('Остаток, RUB','—' if current['balance'] is None else f"{current['balance']:,.2f}")
-            cols[1].metric('NPL90','—' if current['npl90_ratio'] is None else f"{current['npl90_ratio']:.2%}")
-            cols[2].metric('Доход за месяц, RUB','—' if current['interest_income'] is None else f"{current['interest_income']:,.2f}")
-            frame=pd.DataFrame([{k:float(v) if isinstance(v,Decimal) else v for k,v in r.items()} for r in monthly]).set_index('month')
-            st.line_chart(frame[['balance','dpd90_balance']],color=['#376CA6','#183153'])
-            st.bar_chart(frame[['interest_income']],color='#186A3B')
-        st.caption('Остатки — на последний календарный день месяца. Доход — сумма за месяц. NPL рассчитан из суммарных остатков. Пропуски сохраняются.')
-        with st.expander('Детализация витрины'):
-            st.dataframe(filtered,hide_index=True,use_container_width=True)
-        with st.expander('Качество источников: покрытие month-end'):
-            st.caption('Независимый контроль по источникам: кредиты с данными месяца без последнего календарного снимка. Это отдельный DQ-индикатор, не денежная метрика SQL-витрины.')
-            coverage=[{k:r[k] for k in ['month','product_id','region','source_row_count','snapshot_loan_count','missing_snapshot_loans']} for r in (analytics or {}).get('reference_rows',[]) if str(r['product_id']) in products and r['region'] in regions]
-            st.dataframe(coverage,hide_index=True,use_container_width=True)
-    for name in ['report.xlsx','query.sql','qa.json']:
-        if name in (execution.get('artifacts') or {}):
-            try:
-                response=httpx.get(API+execution['artifacts'][name]['url'],headers={'Authorization':'Bearer '+TOKEN},timeout=15)
-                if response.status_code==200:st.download_button('Скачать '+name,response.content,file_name=name,key='download-'+name)
-            except httpx.TransportError:st.caption('Файл временно недоступен: '+name)
-    git=execution.get('git') or {}
-    if git.get('documentation_url'):st.link_button('Результат в BookStack',git['documentation_url'])
-    for pull in git.get('pulls',[]):st.link_button('PR задачи #'+str(pull['task_id']),pull['pull_request_url'])
-    for release in git.get('releases',[]):st.link_button('Релиз эпика #'+str(release['epic_id']),release['pull_request_url'])
-    if execution['status']=='RELEASE_REVIEW':
-        st.info('Результат принят. Релизные PR ожидают независимого ревью, CI и слияния в main.')
-        if st.button('Проверить выпуск релиза'):
-            if request('/stories/'+id+'/execution/finalize-release','POST',{}):st.rerun()
-    for tag in git.get('tags',[]):st.caption('Выпущен: '+tag['tag'])
-    if execution['status']=='WAITING_GITHUB':
-        st.info('Расчёт и отчёт готовы. Для публикации PR нужны сервисный GitHub-токен в локальном .env, перезапуск GitHub broker и слияние PR реализации этапа 3 в базовую release-ветку.')
-    if execution['status'] in ['WAITING_GITHUB','READY_TO_PUBLISH','PUBLISHED'] or execution['status'] in ['BUSINESS_ACCEPTED','FINALIZING_RELEASE'] and story['status']=='FAILED':
-        if st.button('Повторить публикацию PR'):
-            if request('/stories/'+id+'/execution/retry','POST',{}):st.rerun()
-    if execution['status']=='ACCEPTANCE':
-        st.info('Результат ожидает приёмки. Сначала завершите независимое GitHub review, CI и слияние task PR.')
-        if st.button('Проверить готовность PR'):
-            gate=request('/stories/'+id+'/execution/gate','POST',{})
-            if gate:st.json(gate)
-        if st.button('Принять результат',type='primary'):
-            if request('/stories/'+id+'/execution/accept','POST',{'revision':story['revision'],'plan_digest':execution['analytics_digest']}):st.rerun()
-    if execution['status']=='ESCALATED':st.warning('Три попытки исчерпаны. Требуется решение системного аналитика и уточнение задачи.')
+    st.subheader('Аналитическая спецификация · этап 2')
+    analytics=story.get('analytics')
+    if not analytics:
+        st.caption('Синтетические источники → System Analyst → Financial Analyst → отдельное подтверждение. SQL агентом не выполняется.')
+        if story['status']=='IN_PROGRESS' and story['approved']:
+            if st.button('Подготовить аналитическую спецификацию',type='primary'):
+                if request('/stories/'+id+'/analytics/start','POST',{}):st.rerun()
+        else:
+            st.caption('Доступно после одобрения плана.')
+    else:
+        st.write('Статус спецификации: **'+analytics['status']+'**')
+        if analytics['status'] in ['REQUESTED','RUNNING'] and story['status'] in ['BLOCKED','FAILED','CANCELLED']:
+            st.warning('Подготовка спецификации приостановлена: '+story['status'])
+        elif analytics['status'] in ['REQUESTED','RUNNING']:
+            st.info('Аналитики готовят спецификацию. Обновите историю для просмотра результата; карточки команды обновляются автоматически.')
+        if analytics.get('source_spec'):
+            with st.expander('Source-to-target mapping и качество данных',expanded=True):
+                st.write(analytics['source_spec']['grain'])
+                st.dataframe(analytics['source_spec']['mapping'],column_order=['target','source','rule'],hide_index=True,use_container_width=True)
+                for rule in analytics['source_spec']['data_quality_rules']:st.write('• '+rule)
+        if analytics.get('financial_spec'):
+            spec=analytics['financial_spec']
+            with st.expander('Паспорт метрик и экономический смысл',expanded=True):
+                st.json(spec['passport'])
+                for label,key in [('Бизнес-правила','business_rules'),('Экономические проверки','economic_checks'),('Пользовательские истории','user_stories'),('Допущения','assumptions')]:
+                    st.markdown('**'+label+'**')
+                    for item in spec[key]:st.write('• '+item)
+        if analytics.get('reference_rows'):
+            with st.expander('Независимые ожидаемые значения'):
+                st.caption('Python Decimal-эталон по синтетическим источникам. Это не результат SQL-витрины.')
+                st.dataframe(analytics['reference_rows'],hide_index=True,use_container_width=True)
+            st.caption('Checksum источников: '+analytics['dataset_checksum'])
+        if analytics.get('documentation_url'):
+            st.link_button('Спецификация в BookStack',analytics['documentation_url'])
+        if analytics['status']=='REVIEW' and story['status']=='PLAN_REVIEW':
+            st.info('Подтвердите паспорт и mapping этой ревизии. Изменение критериев требует новой ревизии через уточнения.')
+            if st.button('Одобрить аналитическую спецификацию',type='primary'):
+                if request('/stories/'+id+'/analytics/approve','POST',{'revision':story['revision'],'plan_digest':analytics['digest']}):st.rerun()
+        if analytics['status']=='APPROVED':
+            st.success('Спецификация одобрена. Исполнение SQL и QA реализации — этап 3.')
+        elif analytics['status']=='REVIEW':
+            with st.form('analytics-change'):
+                changes=st.text_area('Уточнения, меняющие спецификацию или критерии')
+                if st.form_submit_button('Вернуть на уточнение'):
+                    if changes.strip():
+                        result=request('/stories/'+id+'/analytics/revise','POST',{'answers':changes})
+                        if result:st.rerun()
+                    else:st.warning('Опишите требуемое изменение.')
+
+    st.subheader('Расчёт и результат · этап 3')
+    execution=story.get('execution')
+    if not execution:
+        if analytics and analytics['status']=='APPROVED' and story['status']=='IN_PROGRESS':
+            if st.button('Запустить реализацию и QA',type='primary'):
+                if request('/stories/'+id+'/execution/start','POST',{}):st.rerun()
+        else:st.caption('Доступно после подтверждения аналитической спецификации.')
+    else:
+        st.write('Статус исполнения: **'+execution['status']+'** · попытка '+str(execution['attempt'])+' из 3')
+        if execution.get('qa'):
+            with st.expander('Проверки качества',expanded=not execution['qa']['passed']):
+                st.write('QA: '+('пройден' if execution['qa']['passed'] else 'есть замечания'))
+                st.json(execution['qa'])
+        if execution.get('review'):
+            with st.expander('Ревью системного аналитика / архитектора'):
+                st.json(execution['review'])
+                st.caption('Ревью модели дополняет независимое GitHub review.')
+        if execution.get('rows') and (execution.get('qa') or {}).get('passed'):
+            import pandas as pd
+            from decimal import Decimal,ROUND_HALF_UP
+            rows=execution['rows']
+            products=st.multiselect('Продукты',sorted({str(r['product_id']) for r in rows}),default=sorted({str(r['product_id']) for r in rows}))
+            regions=st.multiselect('Регионы',sorted({r['region'] for r in rows}),default=sorted({r['region'] for r in rows}))
+            filtered=[r for r in rows if str(r['product_id']) in products and r['region'] in regions]
+            monthly=[]
+            for month in sorted({r['month'] for r in filtered}):
+                parts=[r for r in filtered if r['month']==month];item={'month':month}
+                for metric in ['balance','dpd30_balance','dpd90_balance','interest_income']:
+                    values=[Decimal(str(r[metric])) for r in parts if r[metric] is not None]
+                    item[metric]=sum(values) if values else None
+                b,n=item['balance'],item['dpd90_balance']
+                item['npl90_ratio']=(n/b).quantize(Decimal('.000001'),rounding=ROUND_HALF_UP) if b is not None and n is not None and b else None
+                monthly.append(item)
+            if monthly:
+                month=st.select_slider('Месяц показателей',[r['month'] for r in monthly],value=monthly[-1]['month'])
+                current=next(r for r in monthly if r['month']==month)
+                cols=st.columns(3)
+                cols[0].metric('Остаток, RUB','—' if current['balance'] is None else f"{current['balance']:,.2f}")
+                cols[1].metric('NPL90','—' if current['npl90_ratio'] is None else f"{current['npl90_ratio']:.2%}")
+                cols[2].metric('Доход за месяц, RUB','—' if current['interest_income'] is None else f"{current['interest_income']:,.2f}")
+                frame=pd.DataFrame([{k:float(v) if isinstance(v,Decimal) else v for k,v in r.items()} for r in monthly]).set_index('month')
+                st.line_chart(frame[['balance','dpd90_balance']],color=['#376CA6','#183153'])
+                st.bar_chart(frame[['interest_income']],color='#186A3B')
+            st.caption('Остатки — на последний календарный день месяца. Доход — сумма за месяц. NPL рассчитан из суммарных остатков. Пропуски сохраняются.')
+            with st.expander('Детализация витрины'):
+                st.dataframe(filtered,hide_index=True,use_container_width=True)
+            with st.expander('Качество источников: покрытие month-end'):
+                st.caption('Независимый контроль по источникам: кредиты с данными месяца без последнего календарного снимка. Это отдельный DQ-индикатор, не денежная метрика SQL-витрины.')
+                coverage=[{k:r[k] for k in ['month','product_id','region','source_row_count','snapshot_loan_count','missing_snapshot_loans']} for r in (analytics or {}).get('reference_rows',[]) if str(r['product_id']) in products and r['region'] in regions]
+                st.dataframe(coverage,hide_index=True,use_container_width=True)
+        for name in ['report.xlsx','query.sql','qa.json']:
+            if name in (execution.get('artifacts') or {}):
+                try:
+                    response=httpx.get(API+execution['artifacts'][name]['url'],headers={'Authorization':'Bearer '+TOKEN},timeout=15)
+                    if response.status_code==200:st.download_button('Скачать '+name,response.content,file_name=name,key='download-'+name)
+                except httpx.TransportError:st.caption('Файл временно недоступен: '+name)
+        git=execution.get('git') or {}
+        if git.get('documentation_url'):st.link_button('Результат в BookStack',git['documentation_url'])
+        for pull in git.get('pulls',[]):st.link_button('PR задачи #'+str(pull['task_id']),pull['pull_request_url'])
+        for release in git.get('releases',[]):st.link_button('Релиз эпика #'+str(release['epic_id']),release['pull_request_url'])
+        if execution['status']=='RELEASE_REVIEW':
+            st.info('Результат принят. Релизные PR ожидают независимого ревью, CI и слияния в main.')
+            if st.button('Проверить выпуск релиза'):
+                if request('/stories/'+id+'/execution/finalize-release','POST',{}):st.rerun()
+        for tag in git.get('tags',[]):st.caption('Выпущен: '+tag['tag'])
+        if execution['status']=='WAITING_GITHUB':
+            st.info('Расчёт и отчёт готовы. Для публикации PR нужны сервисный GitHub-токен в локальном .env, перезапуск GitHub broker и слияние PR реализации этапа 3 в базовую release-ветку.')
+        if execution['status'] in ['WAITING_GITHUB','READY_TO_PUBLISH','PUBLISHED'] or execution['status'] in ['BUSINESS_ACCEPTED','FINALIZING_RELEASE'] and story['status']=='FAILED':
+            if st.button('Повторить публикацию PR'):
+                if request('/stories/'+id+'/execution/retry','POST',{}):st.rerun()
+        if execution['status']=='ACCEPTANCE':
+            st.info('Результат ожидает приёмки. Сначала завершите независимое GitHub review, CI и слияние task PR.')
+            if st.button('Проверить готовность PR'):
+                gate=request('/stories/'+id+'/execution/gate','POST',{})
+                if gate:st.json(gate)
+            if st.button('Принять результат',type='primary'):
+                if request('/stories/'+id+'/execution/accept','POST',{'revision':story['revision'],'plan_digest':execution['analytics_digest']}):st.rerun()
+        if execution['status']=='ESCALATED':st.warning('Три попытки исчерпаны. Требуется решение системного аналитика и уточнение задачи.')
 
 @st.fragment(run_every='10s')
 def team_panel(story_id):
