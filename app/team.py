@@ -98,6 +98,19 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
                 card['remaining'] += 1
                 if status.get('isInProgress') and not stopped:
                     card['current'] = 'Выполняет: ' + task['title']
+    feasibility=story.get('feasibility') or {}
+    gap_names={gap['capability']:gap['title'] for gap in feasibility.get('gaps',[])}
+    for task in feasibility.get('tasks',[]):
+        card=cards['system_analyst'];remote=packages.get(task['task_id'])
+        status=(remote or {}).get('_embedded',{}).get('status',{})
+        item={'title':gap_names.get(task['capability'],'Проверить технические предпосылки плана'),
+              'url':task['url'],'status':status.get('name','Статус недоступен'),
+              'key':'capability:'+task['capability'],'closed':status.get('isClosed',False),'depends_on':[]}
+        card['tasks'].append(item)
+        if item['closed']:
+            card['completed']+=1
+            card['history'].append(item|{'revision':story['revision'],'completed_at':remote.get('updatedAt'),'source':'tracker'})
+        elif remote is not None:card['remaining']+=1
     if story.get('delivery_mode')=='product' and worker_active and not stopped:
         activity={'financial_analyst':'Определяет экономические критерии','designer':'Готовит стиль продукта',
             'data_developer':'Проектирует данные продукта','application_developer':'Пишет приложение и тесты',
@@ -125,6 +138,13 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
         active_roles={call['role'] for call in calls if call['revision']==story['revision'] and call['state']=='reserved'} if worker_active else set()
         for role,card in cards.items():
             card['current']=product_activity(role,product_status,current_results,role in active_roles,card['current'])
+    if story['status']=='BLOCKED' and feasibility.get('status') in ['NEEDS_PLATFORM','NEEDS_ANALYSIS']:
+        for role,card in cards.items():
+            if role=='system_analyst':
+                pending=next((task for task in card['tasks'] if not task['closed']),None)
+                card['current']='Нужно подготовить: '+pending['title'] if pending else 'Нужно проверить технические предпосылки плана'
+            elif role=='pm':card['current']='Ждёт подготовки среды для планирования'
+            else:card['current']='Ждёт выполнимого плана'
     return {'agents': list(cards.values()), 'tracker_available': tracker_available,
             'scope': 'story', 'revision': story['revision']}
 

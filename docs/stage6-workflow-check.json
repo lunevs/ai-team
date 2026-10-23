@@ -12,15 +12,15 @@
     "independent_fixture_result_42",
     "stale_digest_rejected",
     "independent_qa_and_architecture_reviews",
-    "eight_budgeted_mock_calls",
+    "nine_accounted_mock_calls_including_feasibility",
     "no_deployment_without_git_review_merge",
     "restart_no_duplicate_llm_or_package",
     "cancel_prevents_operator_claim"
   ],
-  "story_id": "e8f12d76-7e28-46ed-bc31-a69c2285c74d",
+  "story_id": "bbbb9a2d-7eaa-4b7c-98c8-bac70524bd78",
   "usage": {
-    "calls": 8,
-    "tokens": 800,
+    "calls": 9,
+    "tokens": 900,
     "estimated_cost_usd": 0.0,
     "estimated_calls": 0,
     "backends": [

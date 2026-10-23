@@ -116,7 +116,7 @@ def main():
         call('/product-operations/'+operation['id']+'/report','POST',receipt,op=True)
         finished=wait(lambda:product_status('WAITING_GITHUB'))
         check('independent_qa_and_architecture_reviews',finished['product']['review']['qa']['approved'] and finished['product']['review']['architecture']['approved'])
-        check('eight_budgeted_'+BACKEND+'_calls',finished['usage']['calls']==8 and finished['usage']['backends']==[BACKEND] and finished['usage']['estimated_cost_usd']<=1)
+        check('nine_accounted_'+BACKEND+'_calls_including_feasibility',finished['usage']['calls']==9 and finished['usage']['backends']==[BACKEND] and finished['usage']['estimated_cost_usd']<=1)
         report['usage']=finished['usage']
         check('no_deployment_without_git_review_merge',call('/product-operations/claim','POST',op=True)['operation'] is None)
         host.docker('restart',NAMES[0]);call(path+'/product/refresh','POST')

@@ -203,7 +203,7 @@ def team(id:uuid.UUID,user=Depends(current_user)):
         statuses={item['_links']['self']['href']:item for item in tracker.collection('/api/v3/statuses',role='pm')}
         import json
         from urllib.parse import quote
-        ids=[str(link['external_id']) for link in links if link['key'].startswith(f"r{story['revision']}:task:")]
+        ids=[str(link['external_id']) for link in links if link['key'].startswith((f"r{story['revision']}:task:",f"r{story['revision']}:feasibility:gap:"))]
         path=f'/api/v3/projects/{settings.project_id}/work_packages?pageSize=100'
         filters=quote(json.dumps([{'id':{'operator':'=','values':ids}}]),safe='') if ids else ''
         selected=tracker.collection(path+'&filters='+filters,role='pm') if ids else []
