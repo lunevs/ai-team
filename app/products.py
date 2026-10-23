@@ -221,9 +221,13 @@ def publish(story,record):
         update(record['id'],status='DEPLOY_READY')
     elif (story.get('plan') or {}).get('development_mode')=='workspace':
         feedback=broker('/feedback',{'pulls':gate_pulls})
-        if feedback.get('findings'):
+        from app.rework_contract import feedback_key
+        if feedback.get('findings') and record['git'].get('dismissed_feedback')!=feedback_key(feedback):
             from app.rework import product_failure
             product_failure(story,record,feedback['findings'],feedback,actual_failure=feedback.get('execution_failed',False))
+        else:
+            from app.workspaces import schedule
+            schedule(story['id'],30)
 
 
 def public(record):

@@ -176,7 +176,8 @@ def advance(story):
     if active['state']=='REVIEW':
         if not broker('/gate',{'pulls':[active['git']]})['eligible']:
             feedback=broker('/feedback',{'pulls':[active['git']]})
-            if feedback.get('findings'):
+            from app.rework_contract import feedback_key
+            if feedback.get('findings') and active['repair_context'].get('dismissed_feedback')!=feedback_key(feedback):
                 from app.rework import task_failure
                 task_failure(story,active,feedback['findings'],feedback,actual_failure=feedback.get('execution_failed',False))
             else:schedule(story['id'],30)

@@ -40,3 +40,7 @@ def validate_triage(findings,decision,actual_failure=False):
     if actual_failure and not any(d.decision in ['confirmed','technical','product'] for d in decision.findings):
         raise ValueError('Actual failed execution cannot be dismissed without a successful recheck')
     return decision
+
+
+def feedback_key(evidence):
+    return hashlib.sha256(json.dumps(evidence,sort_keys=True,ensure_ascii=False).encode()).hexdigest()

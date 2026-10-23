@@ -96,6 +96,13 @@ def ensure_pr(head,base,title,body):
     return github(REPO+'/pulls','POST',{'head':head,'base':base,'title':title[:200],'body':body,'draft':False})
 
 
+def save_journal(path,value):
+    temporary=path.with_suffix('.tmp')
+    with temporary.open('w') as stream:
+        json.dump(value,stream);stream.flush();os.fsync(stream.fileno())
+    temporary.replace(path)
+
+
 def publish_task(data,task,base_sha):
     if not task.files:raise HTTPException(422,'Empty bundle')
     if data.workspace_task:
@@ -162,7 +169,7 @@ def publish_task(data,task,base_sha):
         tip=github(REPO+'/git/ref/heads/'+branch)['object']['sha']
         if tip==journal['previous']:github(REPO+'/git/refs/heads/'+branch,'PATCH',{'sha':journal['sha'],'force':False})
         elif tip!=journal['sha']:raise HTTPException(409,'Source branch changed during update')
-        manifest.write_text(json.dumps({'sha':journal['sha'],'digest':digest}));pending.unlink()
+        save_journal(manifest,{'sha':journal['sha'],'digest':digest});pending.unlink()
         saved={'sha':journal['sha'],'digest':digest};append=False
 
     release_sha=ensure_ref(release,base_sha)
@@ -209,7 +216,7 @@ def publish_task(data,task,base_sha):
         commit=github(REPO+'/git/commits','POST',{'message':marker,'tree':created_tree['sha'],'parents':[release_sha]})
         sha=commit['sha']
         if append:
-            pending.write_text(json.dumps({'sha':sha,'previous':predecessor,'digest':digest}))
+            save_journal(pending,{'sha':sha,'previous':predecessor,'digest':digest})
             github(REPO+'/git/refs/heads/'+branch,'PATCH',{'sha':sha,'force':False})
         else:
             # Write before ref creation so an ambiguous response can reconcile without a duplicate commit.
@@ -335,7 +342,7 @@ def feedback(data:Pulls,authorization:str=Header(default='')):
         bad=[c['name'] for c in checks if c['status']=='completed' and c.get('conclusion') in ['failure','timed_out','cancelled','action_required']]
         if bad:
             failed=True;findings.append({'summary':'Проверки GitHub выявили ошибку','criterion':'Обязательные проверки текущей задачи должны завершиться успешно','evidence':', '.join(bad)[:6000],'severity':'major','verification':'Повторить проверки в GitHub и разобрать причину сбоя CI'})
-    return {'findings':findings[:24],'execution_failed':failed}
+    return {'origin':'github','findings':findings[:24],'execution_failed':failed}
 
 @app.post('/release')
 def release(data:Release,authorization:str=Header(default='')):

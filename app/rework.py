@@ -5,7 +5,7 @@ from app import db
 from app.providers import generate
 from app.integrations import tracker,knowledge,sync_status
 from app.workspace_policy import source_digest
-from app.rework_contract import Finding,SourceReview,Triage,validate_triage,fingerprint
+from app.rework_contract import Finding,SourceReview,Triage,validate_triage,fingerprint,feedback_key
 
 
 def history(story_id,revision):
@@ -108,6 +108,13 @@ def task_failure(story,task,findings,evidence,actual_failure=False):
     if state=='RUNNING':
         from app.workspaces import set_tracker_status
         set_tracker_status(task['task_id'],'IN_PROGRESS')
+    if state=='CHECKED' and evidence.get('origin')=='github':
+        result['dismissed_feedback']=feedback_key(evidence)
+        with db.connection() as c:
+            c.execute("UPDATE workspace_tasks SET state='REVIEW',attempt=attempt+1,repair_context=%s WHERE id=%s",(Jsonb(result),task['id']))
+        from app.workspaces import schedule
+        schedule(story['id'],30)
+        return result
     if state=='CHECKED':
         with db.connection() as c:
             c.execute("UPDATE workspace_tasks SET state='CHECKED',attempt=attempt+1,review=%s,repair_context=%s WHERE id=%s",(Jsonb({'approved':True,'source_digest':source_digest(task['files']),'triage':result}),Jsonb(result),task['id']))
@@ -138,8 +145,14 @@ def product_failure(story,record,findings,evidence,actual_failure=False):
     if result['escalation']:
         products.update(record['id'],status='ESCALATED');return
     if not result['defects']:
-        products.update(record['id'],status='READY_TO_PUBLISH')
-        workspaces.schedule(story['id']);return
+        review=(record['review'] or {})|{'triage':result,'effective_approved':True}
+        if evidence.get('origin')=='github':
+            products.update(record['id'],status='PUBLISHED',review=review,git=record['git']|{'dismissed_feedback':feedback_key(evidence)})
+            workspaces.schedule(story['id'],30)
+        else:
+            products.update(record['id'],status='READY_TO_PUBLISH',review=review)
+            workspaces.schedule(story['id'])
+        return
     epic=story['plan']['epics'][-1]
     epic_id=db.external(story['id'],f"r{story['revision']}:epic:{epic['key']}")['external_id']
     with db.connection() as c:
