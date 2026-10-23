@@ -44,8 +44,8 @@ def assess(story,scope,attempt,files,findings,evidence,owner,actual_failure=Fals
         'platform_files':['Dockerfile','docker-compose.yml','install.md','runtime-requirements.lock'],
         'instruction':'Классифицируй КАЖДОЕ замечание по index. confirmed — доказанный дефект реализации; dismissed — доказуемо ошибочное замечание с обоснованием (например, файл добавляет платформа); technical — отсутствующая возможность/необходимость смены подхода; product — меняются требования/объём/внешние условия и нужно решение PM. Не подменяй требование более простым. Реальный провал теста нельзя просто отклонить. next_action: конкретный технический подход для исполнителя. Изучи previous_attempts: повторный провал требует смены подхода, а не того же совета.'},
         result_role=f'triage_{scope}_{attempt}_{digest[:16]}')
-    if evidence.get('external_change'):
-        decision=Triage(findings=[{'index':i,'decision':'technical','reason':'Ветка изменена вне подтверждённой версии: требуется сверка аналитиком, автоматическая перезапись запрещена.'} for i in range(len(models))],next_action='Сверить фактический head и авторство изменений, сохранить обе версии и определить безопасную новую задачу.')
+    if evidence.get('external_change') or evidence.get('stalled_action'):
+        decision=Triage(findings=[{'index':i,'decision':'technical','reason':('Агент повторяет одинаковое действие без новой информации: требуется иной технический подход.' if evidence.get('stalled_action') else 'Ветка изменена вне подтверждённой версии: требуется сверка аналитиком, автоматическая перезапись запрещена.')} for i in range(len(models))],next_action='Проанализировать историю, выбрать другой технический подход; при изменении ветки сверить авторство и сохранить обе версии.')
     validate_triage(models,decision,actual_failure)
     confirmed=[];escalate=None
     for disposition in decision.findings:

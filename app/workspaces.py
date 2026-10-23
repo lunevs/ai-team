@@ -6,7 +6,7 @@ import uuid
 from psycopg.types.json import Jsonb
 from app import db
 from app.schemas import ProductDefinition
-from app.workspace_contract import WorkspaceAction,apply_action,inventory,source_digest,snapshot,validate_workspace
+from app.workspace_contract import WorkspaceAction,apply_action,inventory,source_digest,snapshot,validate_workspace,repeated_action
 from app.providers import generate
 from app.integrations import tracker,knowledge
 
@@ -122,14 +122,20 @@ def advance(story):
             state='CHECK_PENDING' if intent else 'RUNNING'
         except (ValueError,SyntaxError):
             files=active['files'];response={'error':'Tool rejected action: check path, role, current file hash and valid Python syntax.'};intent=None;state='RUNNING'
+        signature,stalled=repeated_action(active['files'],action,active['observations'])
+        response['_action_signature']=signature
+        checks=None
+        if stalled:
+            state='CHECK_FAILED'
+            checks={'passed':False,'tests_run':0,'error_type':'NoProgress','test_output':'Агент повторяет одинаковое действие на неизменных исходниках без новой информации; нужен другой технический подход.'}
         with db.connection() as conn:
             current=conn.execute('SELECT * FROM workspace_tasks WHERE id=%s FOR UPDATE',(active['id'],)).fetchone()
             row=db.active(story['id'])
             if current['sequence']!=active['sequence']:raise db.Conflict('Workspace action raced')
-            conn.execute('UPDATE workspace_tasks SET state=%s,files=%s,sequence=sequence+1,observations=%s,summary=%s,intent=%s,checks=NULL,review=NULL,operation_id=NULL,lease_until=NULL,updated_at=now() WHERE id=%s',
-                (state,Jsonb(files),Jsonb((active['observations']+[response])[-12:]),action.summary,intent,active['id']))
+            conn.execute('UPDATE workspace_tasks SET state=%s,files=%s,sequence=sequence+1,observations=%s,summary=%s,intent=%s,checks=%s,review=NULL,operation_id=NULL,lease_until=NULL,updated_at=now() WHERE id=%s',
+                (state,Jsonb(files),Jsonb((active['observations']+[response])[-12:]),action.summary,intent,Jsonb(checks) if checks else None,active['id']))
             db.event(conn,row,'workspace.action',{'task_id':active['task_id'],'operation':action.operation,'sequence':active['sequence']},f"{active['id']}:{active['sequence']}")
-            if state=='RUNNING':db.enqueue(conn,story['id'])
+            if state in ['RUNNING','CHECK_FAILED']:db.enqueue(conn,story['id'])
         return False
     if active['state']=='CHECK_PENDING':return False
     if active['state'] in ['FAILED','ESCALATED']:
@@ -140,7 +146,7 @@ def advance(story):
         finding={'summary':'Проверка изменений завершилась ошибкой','criterion':'; '.join(active['specification']['acceptance_criteria'])[:2000],
             'evidence':(active['checks'].get('test_output') or active['checks'].get('error_type') or 'Execution failed')[-6000:],
             'severity':'major','verification':'Повторить изолированную проверку и независимое ревью текущей задачи'}
-        task_failure(story,active,[finding],{'checks':active['checks']},actual_failure=True);return False
+        task_failure(story,active,[finding],{'checks':active['checks'],'stalled_action':active['checks'].get('error_type')=='NoProgress'},actual_failure=active['checks'].get('error_type')!='NoProgress');return False
     if active['state'] in ['CHECKED','WAITING_GITHUB'] and not active['review']:
         from app.rework import review_source,task_failure
         review=review_source(story,active['specification'],active['files'],active['checks'],active['attempt'],'task_'+str(active['task_id']))
