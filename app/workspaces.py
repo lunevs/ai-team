@@ -6,7 +6,7 @@ import uuid
 from psycopg.types.json import Jsonb
 from app import db
 from app.schemas import ProductDefinition
-from app.workspace_contract import WorkspaceAction,apply_action,inventory,source_digest,snapshot,validate_workspace
+from app.workspace_contract import WorkspaceAction,apply_action,inventory,source_digest,snapshot,validate_workspace,repeated_action
 from app.providers import generate
 from app.integrations import tracker,knowledge
 
@@ -98,7 +98,8 @@ def advance(story):
     from app.delivery import broker
     workspace=initialize(story);all_rows=tasks(workspace['id']);by_key={r['task_key']:r for r in all_rows}
     epic=story['plan']['epics'][workspace['epic_index']]
-    rows=[by_key[t['key']] for t in epic['tasks'] if t.get('kind')!='package']
+    epic_id=db.external(story['id'],f"r{story['revision']}:epic:{epic['key']}")['external_id']
+    rows=[r for r in all_rows if r['epic_id']==epic_id]
     if all(r['state']=='MERGED' for r in rows):
         if workspace['epic_index']<len(story['plan']['epics'])-1:return milestone(story,workspace,rows)
         return workspace
@@ -111,29 +112,51 @@ def advance(story):
         set_tracker_status(active['task_id'],'IN_PROGRESS');schedule(story['id']);return False
     if active['state']=='RUNNING':
         context={'story':story['text'],'answers':story['answers'],'definition':workspace['definition'],
-            'task':active['specification'],'task_id':active['task_id'],'sequence':active['sequence'],
+            'task':active['specification'],'task_id':active['task_id'],'sequence':active['sequence'],'attempt':active['attempt'],'repair':active['repair_context'],
             'files':inventory(active['files']),'observations':active['observations'][-6:],
             'policy':'Read/search/list product files; edit/write/delete only allowed paths using current SHA256 (new for new files). No shell, network, secrets, team files or Docker commands. app.py serves /health and /result on 8000, job writes /data/result.json; database only DATABASE_URL. stdlib/httpx/psycopg/pandas/fastapi/streamlit only. Read in chunks. Change individual files, preserve previous tasks. Data role: data/, migrations/, tests/, docs/; QA: tests/ and docs/; other non-developers: docs/. docs/tasks/ is platform-owned. Each edit must leave valid Python syntax. check runs isolated tests and resumes you; finish requests final tests and PR. Never claim execution without actual check observation. Write meaningful sources/documents for this task; other tasks and business acceptance remain separate. Return ONE WorkspaceAction.'}
         action=generate(story['id'],active['role'],WorkspaceAction,context,
-            result_role=f"ws_{active['task_id']}_{active['sequence']}_{source_digest(active['files'])[:12]}")
+            result_role=f"ws_{active['task_id']}_{active['attempt']}_{active['sequence']}_{source_digest(active['files'])[:12]}")
         try:
             files,response,intent=apply_action(active['files'],active['role'],action)
             state='CHECK_PENDING' if intent else 'RUNNING'
         except (ValueError,SyntaxError):
             files=active['files'];response={'error':'Tool rejected action: check path, role, current file hash and valid Python syntax.'};intent=None;state='RUNNING'
+        signature,stalled=repeated_action(active['files'],action,active['observations'])
+        response['_action_signature']=signature
+        checks=None
+        if stalled:
+            state='CHECK_FAILED'
+            checks={'passed':False,'tests_run':0,'error_type':'NoProgress','test_output':'Агент повторяет одинаковое действие на неизменных исходниках без новой информации; нужен другой технический подход.'}
         with db.connection() as conn:
             current=conn.execute('SELECT * FROM workspace_tasks WHERE id=%s FOR UPDATE',(active['id'],)).fetchone()
             row=db.active(story['id'])
             if current['sequence']!=active['sequence']:raise db.Conflict('Workspace action raced')
-            conn.execute('UPDATE workspace_tasks SET state=%s,files=%s,sequence=sequence+1,observations=%s,summary=%s,intent=%s,checks=NULL,operation_id=NULL,lease_until=NULL,updated_at=now() WHERE id=%s',
-                (state,Jsonb(files),Jsonb((active['observations']+[response])[-12:]),action.summary,intent,active['id']))
+            conn.execute('UPDATE workspace_tasks SET state=%s,files=%s,sequence=sequence+1,observations=%s,summary=%s,intent=%s,checks=%s,review=NULL,operation_id=NULL,lease_until=NULL,updated_at=now() WHERE id=%s',
+                (state,Jsonb(files),Jsonb((active['observations']+[response])[-12:]),action.summary,intent,Jsonb(checks) if checks else None,active['id']))
             db.event(conn,row,'workspace.action',{'task_id':active['task_id'],'operation':action.operation,'sequence':active['sequence']},f"{active['id']}:{active['sequence']}")
-            if state=='RUNNING':db.enqueue(conn,story['id'])
+            if state in ['RUNNING','CHECK_FAILED']:db.enqueue(conn,story['id'])
         return False
     if active['state']=='CHECK_PENDING':return False
-    if active['state']=='FAILED':
+    if active['state'] in ['FAILED','ESCALATED']:
         from app.integrations import sync_status
         sync_status(story['id'],'BLOCKED');return False
+    if active['state']=='CHECK_FAILED':
+        from app.rework import task_failure
+        finding={'summary':'Проверка изменений завершилась ошибкой','criterion':'; '.join(active['specification']['acceptance_criteria'])[:2000],
+            'evidence':(active['checks'].get('test_output') or active['checks'].get('error_type') or 'Execution failed')[-6000:],
+            'severity':'major','verification':'Повторить изолированную проверку и независимое ревью текущей задачи'}
+        task_failure(story,active,[finding],{'checks':active['checks'],'stalled_action':active['checks'].get('error_type')=='NoProgress'},actual_failure=active['checks'].get('error_type')!='NoProgress');return False
+    if active['state'] in ['CHECKED','WAITING_GITHUB'] and not active['review']:
+        from app.rework import review_source,task_failure
+        review=review_source(story,active['specification'],active['files'],active['checks'],active['attempt'],'task_'+str(active['task_id']))
+        if not review['approved']:
+            findings=[f for r in review['reviews'].values() for f in r['findings']]
+            task_failure(story,active,findings,review);return False
+        with db.connection() as conn:
+            conn.execute('UPDATE workspace_tasks SET review=%s WHERE id=%s',(Jsonb(review),active['id']))
+            db.enqueue(conn,story['id'])
+        return False
     if active['state'] in ['CHECKED','WAITING_GITHUB']:
         readiness=broker('/ready')
         if not readiness.get('workspace_base_ready'):
@@ -143,11 +166,12 @@ def advance(story):
         root='workspaces/'+manifest['product_key']+'/'
         files={root+'workspace.json':json.dumps(manifest,sort_keys=True,ensure_ascii=False).encode()}
         files.update({root+'source/'+p:t.encode() for p,t in active['files'].items()})
-        page=knowledge.ensure_page(story['id'],f"r{story['revision']}:workspace-task:{active['task_key']}",active['specification']['title'],
+        page=knowledge.ensure_page(story['id'],f"r{story['revision']}:workspace-task:{active['task_key']}:{active['attempt']}:{manifest['source_digest'][:12]}",active['specification']['title'],
             '# Результат задачи\n\n'+active['summary']+'\n\nИсходники: '+manifest['source_digest']+'\n\nФактические проверки:\n```json\n'+json.dumps(active['checks'],ensure_ascii=False)+'\n```'+\
             ''.join('\n\n## '+path+'\n\n'+text for path,text in active['files'].items() if path.startswith('docs/') and workspace['files'].get(path)!=text))
         result=broker('/publish',{'run_id':str(active['id']),'story_id':str(story['id']),'revision':story['revision'],'workspace_task':True,
             'previous_release':workspace['git'].get('previous_release'),'documentation_url':page,
+            'supersedes':{str(active['task_id']):active['git']['commit']} if active['git'] else {},
             'tasks':[{'task_id':active['task_id'],'epic_id':active['epic_id'],'role':active['role'],'files':{p:base64.b64encode(b).decode() for p,b in files.items()}}]})['pulls'][0]
         with db.connection() as conn:conn.execute("UPDATE workspace_tasks SET state='REVIEW',git=%s WHERE id=%s",(Jsonb(result),active['id']))
         item=tracker.request('/api/v3/work_packages/'+str(active['task_id']))
@@ -156,12 +180,21 @@ def advance(story):
                 'description':{'format':'markdown','raw':item['description']['raw']+'\n\nРезультат: '+page+'\nPR: '+result['pull_request_url']+'\nПроверенный источник: '+manifest['source_digest']}})
         set_tracker_status(active['task_id'],'PLAN_REVIEW');schedule(story['id'],30);return False
     if active['state']=='REVIEW':
-        if not broker('/gate',{'pulls':[active['git']]})['eligible']:schedule(story['id'],30);return False
+        if not broker('/gate',{'pulls':[active['git']]})['eligible']:
+            feedback=broker('/feedback',{'pulls':[active['git']]})
+            from app.rework_contract import feedback_key
+            if feedback.get('findings') and active['repair_context'].get('dismissed_feedback')!=feedback_key(feedback):
+                from app.rework import task_failure
+                task_failure(story,active,feedback['findings'],feedback,actual_failure=feedback.get('execution_failed',False))
+            else:schedule(story['id'],30)
+            return False
+        from app.rework import resolved
+        resolved(story,'task_'+str(active['task_id']),{'source_digest':source_digest(active['files']),'checks':active['checks'],'review':active['review'],'git':active['git']})
         with db.connection() as conn:
             current=conn.execute('SELECT * FROM product_workspaces WHERE id=%s FOR UPDATE',(workspace['id'],)).fetchone()
             if current['version']!=active['base_version']:raise db.Conflict('Workspace base changed before integration')
             conn.execute('UPDATE product_workspaces SET files=%s,version=version+1,git=%s,updated_at=now() WHERE id=%s',
-                (Jsonb(active['files']),Jsonb(workspace['git']|{'pulls':workspace['git']['pulls']+[active['git']]}),workspace['id']))
+                (Jsonb(active['files']),Jsonb(workspace['git']|{'pulls':list({p['task_id']:p for p in workspace['git']['pulls']+[active['git']]}.values())}),workspace['id']))
             conn.execute("UPDATE workspace_tasks SET state='MERGED' WHERE id=%s",(active['id'],))
             db.enqueue(conn,story['id'])
         return False
@@ -172,4 +205,4 @@ def public(workspace):
     if not workspace:return None
     rows=tasks(workspace['id'])
     return {'id':workspace['id'],'version':workspace['version'],'epic_index':workspace['epic_index'],'files':inventory(workspace['files']),
-        'milestones':workspace['git'].get('milestones',[]),'tasks':[{k:r[k] for k in ['task_key','task_id','epic_id','role','state','sequence','summary','checks','git']} for r in rows]}
+        'milestones':workspace['git'].get('milestones',[]),'tasks':[{k:r[k] for k in ['task_key','task_id','epic_id','role','specification','state','sequence','summary','checks','git','attempt','review','repair_context']} for r in rows]}

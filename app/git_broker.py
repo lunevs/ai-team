@@ -35,6 +35,7 @@ class Publish(BaseModel):
     workspace_task:bool=False
     workspace_delivery:bool=False
     previous_release:dict|None=None
+    supersedes:dict[str,str]=Field(default_factory=dict)
 
 class Pulls(BaseModel):
     model_config=ConfigDict(extra='forbid')
@@ -95,6 +96,17 @@ def ensure_pr(head,base,title,body):
     return github(REPO+'/pulls','POST',{'head':head,'base':base,'title':title[:200],'body':body,'draft':False})
 
 
+def save_journal(path,value):
+    temporary=path.with_suffix('.tmp')
+    with temporary.open('w') as stream:
+        json.dump(value,stream);stream.flush();os.fsync(stream.fileno())
+    temporary.replace(path)
+
+
+def tree_deletions(tree,root,paths):
+    return [{'path':item['path'],'mode':'100644','type':'blob','sha':None} for item in tree if item['type']=='blob' and item['path'].startswith(root) and item['path'] not in paths]
+
+
 def publish_task(data,task,base_sha):
     if not task.files:raise HTTPException(422,'Empty bundle')
     if data.workspace_task:
@@ -151,7 +163,19 @@ def publish_task(data,task,base_sha):
     workspace.mkdir(parents=True,exist_ok=True)
     manifest=workspace/'_commit.json'
     saved=json.loads(manifest.read_text()) if manifest.exists() else None
-    if saved and saved['digest']!=digest:raise HTTPException(409,'Verified task content changed')
+    predecessor=data.supersedes.get(str(task.task_id))
+    append=bool(saved and saved['digest']!=digest and predecessor==saved['sha'])
+    if saved and saved['digest']!=digest and not append:raise HTTPException(409,'Verified task content changed')
+    pending=workspace/'_pending.json'
+    if pending.exists():
+        journal=json.loads(pending.read_text())
+        if journal['digest']!=digest:raise HTTPException(409,'Different source update pending')
+        tip=github(REPO+'/git/ref/heads/'+branch)['object']['sha']
+        if tip==journal['previous']:github(REPO+'/git/refs/heads/'+branch,'PATCH',{'sha':journal['sha'],'force':False})
+        elif tip!=journal['sha']:raise HTTPException(409,'Source branch changed during update')
+        save_journal(manifest,{'sha':journal['sha'],'digest':digest});pending.unlink()
+        saved={'sha':journal['sha'],'digest':digest};append=False
+
     release_sha=ensure_ref(release,base_sha)
     tip=github(REPO+'/git/ref/heads/'+branch,missing=True)
     if not tip:
@@ -165,6 +189,12 @@ def publish_task(data,task,base_sha):
     if not tip and saved:
         tip={'object':{'sha':ensure_ref(branch,saved['sha'])}}
     sha=None
+    if tip and append:
+        if tip['object']['sha']!=predecessor:raise HTTPException(409,'Source head changed before repair')
+        prior=github(REPO+'/pulls?state=all&head=lunevs:'+branch+'&base='+release)
+        if not prior or prior[0]['state']!='open' or prior[0].get('merged_at'):raise HTTPException(409,'Cannot change a merged or closed task')
+        release_sha=predecessor
+        tip=None
     if tip:
         if not saved or saved['sha']!=tip['object']['sha']:raise HTTPException(409,'Verified workspace/commit changed; restore the original workspace')
         commit=github(REPO+'/git/commits/'+tip['object']['sha'])
@@ -180,19 +210,25 @@ def publish_task(data,task,base_sha):
             tree.append({'path':name if data.product_package or data.workspace_task else f'deliveries/{data.story_id}/r{data.revision}/task-{task.task_id}/{name}',
                          'mode':'100644','type':'blob','sha':blob['sha']})
         parent=github(REPO+'/git/commits/'+release_sha)
-        if data.workspace_task:
+        if data.workspace_task or data.workspace_delivery:
             old_tree=github(REPO+'/git/trees/'+parent['tree']['sha']+'?recursive=1')
             if old_tree.get('truncated'):raise HTTPException(409,'Repository tree truncated')
-            for item in old_tree['tree']:
-                if item['type']=='blob' and item['path'].startswith(root+'source/') and item['path'] not in blobs:
-                    tree.append({'path':item['path'],'mode':'100644','type':'blob','sha':None})
+            delete_root=root+'source/' if data.workspace_task else '/'.join(next(iter(blobs)).split('/')[:2])+'/'
+            tree.extend(tree_deletions(old_tree['tree'],delete_root,blobs))
         created_tree=github(REPO+'/git/trees','POST',{'base_tree':parent['tree']['sha'],'tree':tree})
         commit=github(REPO+'/git/commits','POST',{'message':marker,'tree':created_tree['sha'],'parents':[release_sha]})
         sha=commit['sha']
+        if append:
+            save_journal(pending,{'sha':sha,'previous':predecessor,'digest':digest})
+            github(REPO+'/git/refs/heads/'+branch,'PATCH',{'sha':sha,'force':False})
+        else:
+            # Write before ref creation so an ambiguous response can reconcile without a duplicate commit.
+            temporary=manifest.with_suffix('.tmp')
+            temporary.write_text(json.dumps({'sha':sha,'digest':digest}));temporary.replace(manifest)
+            if ensure_ref(branch,sha)!=sha:raise HTTPException(409,'Feature ref raced with another writer')
         temporary=manifest.with_suffix('.tmp')
         temporary.write_text(json.dumps({'sha':sha,'digest':digest}));temporary.replace(manifest)
-        # Create the feature ref directly at its immutable commit. Never force-push or update main.
-        if ensure_ref(branch,sha)!=sha:raise HTTPException(409,'Feature ref raced with another writer')
+        if pending.exists():pending.unlink()
     pr=ensure_pr(branch,release,f'Задача #{task.task_id}: {task.role}',
         f'Результат исполнения истории {data.story_id}, ревизия {data.revision}.\n\n'
         f'Задача: http://localhost:8080/work_packages/{task.task_id}\nДокументация: {data.documentation_url}\n\n'+
@@ -258,7 +294,7 @@ def evaluate_pull(pr,reviews,checks,statuses,expected_commit,product=False,works
     latest={}
     for review in sorted(reviews,key=lambda x:(x.get('submitted_at') or '',x.get('id',0))):
         if review.get('state') in ['APPROVED','CHANGES_REQUESTED','DISMISSED']:
-            latest[review['user']['login']]=review['state']
+            latest[review['user']['login']]='STALE' if review['state']=='APPROVED' and review.get('commit_id',expected_commit)!=expected_commit else review['state']
     others={who:state for who,state in latest.items() if who!=pr['user']['login']}
     if 'APPROVED' not in others.values() or 'CHANGES_REQUESTED' in others.values():reasons.append('Independent approval required')
     latest_checks={}
@@ -285,6 +321,31 @@ def gate(data:Pulls,authorization:str=Header(default='')):
         statuses=github(REPO+f'/commits/{expected}/status')
         results.append({'number':number,**evaluate_pull(pr,reviews,checks,statuses,expected,bool(item.get('product_package')),bool(item.get('workspace_task')))})
     return {'eligible':all(r['eligible'] for r in results),'pulls':results}
+
+@app.post('/feedback')
+def feedback(data:Pulls,authorization:str=Header(default='')):
+    auth(authorization);findings=[];failed=False
+    for item in data.pulls:
+        number=int(item['number']);expected=str(item['commit'])
+        if not re.fullmatch(r'[0-9a-f]{40}',expected):raise HTTPException(422,'Invalid commit')
+        pr=github(REPO+'/pulls/'+str(number))
+        if pr['head']['sha']!=expected:return {'external_change':True,'findings':[{'summary':'Ветка изменена вне подтверждённой версии','criterion':'Изменения должны соответствовать проверенному head','evidence':'Ожидался '+expected+', получен '+pr['head']['sha'],'severity':'critical','verification':'Аналитик сверяет происхождение изменений; автоматическая перезапись запрещена'}]}
+        if pr.get('merged'):continue
+        reviews=github(REPO+f'/pulls/{number}/reviews?per_page=100')
+        latest={}
+        for r in sorted(reviews,key=lambda r:(r.get('submitted_at') or '',r.get('id',0))):
+            if r.get('state') in ['APPROVED','CHANGES_REQUESTED','DISMISSED']:latest[r['user']['login']]=r
+        rejected=[r for who,r in latest.items() if who!=pr['user']['login'] and r['state']=='CHANGES_REQUESTED' and r.get('commit_id',expected)==expected]
+        if rejected:
+            comments=github(REPO+f'/pulls/{number}/comments?per_page=100')
+            for review in rejected:
+                text=(review.get('body') or '')+'\n'+'\n'.join(str(c.get('path',''))+': '+str(c.get('body','')) for c in comments if c.get('pull_request_review_id')==review['id'])
+                findings.append({'summary':'Независимый проверяющий запросил исправления','criterion':'Соответствие критериям текущей задачи и независимому review','evidence':text.strip()[:6000] or 'Review CHANGES_REQUESTED без пояснений: требуется разбор аналитиком','severity':'major','verification':'Повторить проверки и получить независимое review новой версии кода'})
+        checks=github(REPO+f'/commits/{expected}/check-runs?per_page=100')['check_runs']
+        bad=[c['name'] for c in checks if c['status']=='completed' and c.get('conclusion') in ['failure','timed_out','cancelled','action_required']]
+        if bad:
+            failed=True;findings.append({'summary':'Проверки GitHub выявили ошибку','criterion':'Обязательные проверки текущей задачи должны завершиться успешно','evidence':', '.join(bad)[:6000],'severity':'major','verification':'Повторить проверки в GitHub и разобрать причину сбоя CI'})
+    return {'origin':'github','findings':findings[:24],'execution_failed':failed}
 
 @app.post('/release')
 def release(data:Release,authorization:str=Header(default='')):

@@ -72,6 +72,8 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
     prefix = f"r{story['revision']}:task:"
     by_key = {link['key']: link for link in links}
     planned = [task for epic in (story.get('plan') or {}).get('epics', []) for task in epic['tasks']]
+    known={task['key'] for task in planned}
+    planned += [row['specification'] for row in (story.get('workspace') or {}).get('tasks',[]) if row['task_key'] not in known]
     task_titles = {task['key']: task['title'] for task in planned}
     closed_keys = set()
     for task in planned:
@@ -156,9 +158,9 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
             current=next((row for row in own if row['state'] not in ['PENDING','MERGED']),None)
             if current:
                 title=titles.get(current['task_key'],current['task_key'])
-                label={'RUNNING':'Работает над задачей' if worker_active else 'Готовится продолжить',
+                label={'RUNNING':('Исправляет замечания' if current.get('attempt',0) else 'Работает над задачей') if worker_active else 'Готовится продолжить',
                     'CHECK_PENDING':'Ждёт проверки изменений','CHECKED':'Готовит изменения к согласованию',
-                    'WAITING_GITHUB':'Ждёт готовности публикации','REVIEW':'Ждёт согласования изменений','FAILED':'Требуется исправление'}
+                    'CHECK_FAILED':'Разбирает ошибку проверки','ESCALATED':'Аналитик выбирает способ решения','WAITING_GITHUB':'Ждёт готовности публикации','REVIEW':'Ждёт согласования изменений','FAILED':'Требуется исправление'}
                 card['current']=label.get(current['state'],'Ожидает продолжения')+': '+title
             else:
                 pending=next((row for row in own if row['state']=='PENDING'),None)

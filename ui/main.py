@@ -138,10 +138,10 @@ def interaction_panel(id):
         st.info('Одобрение относится к показанной ревизии. На этапе 1 SQL ещё не выполняется.')
         if st.button('Одобрить план',type='primary'):
             if request('/stories/'+id+'/approve-plan','POST',{'revision':story['revision'],'plan_digest':story['plan_digest']}):st.rerun()
-    workspace_failed=any(t['state']=='FAILED' for t in (story.get('workspace') or {}).get('tasks',[]))
+    workspace_failed=any(t['state'] in ['FAILED','ESCALATED'] for t in (story.get('workspace') or {}).get('tasks',[]))
     if workspace_failed:
-        st.error('Проверка изменений выявила ошибку. Подробности — ниже, в разделе «Разработка по задачам». Ответ заказчика не требуется; команде нужно исправить код.')
-    if story['status'] in ['BLOCKED','FAILED'] and story.get('error_type')!='BudgetExceeded' and not technical_block and not workspace_failed:
+        st.error('Проверка изменений выявила ошибку. Подробности — ниже, в разделе «Разработка по задачам». Нужно техническое решение команды; подробности и следующее действие сохранены в замечаниях.')
+    if story['status'] in ['BLOCKED','FAILED'] and story.get('error_type')!='BudgetExceeded' and not technical_block and not workspace_failed and (story.get('questions') or not (story.get('repairs') or {}).get('defects')):
         with st.form('resume'):
             answers=st.text_area('Ответы и уточнения (создадут новую ревизию плана)',key=f'answers-{id}-{story["revision"]}')
             if st.form_submit_button('Продолжить'):
@@ -164,6 +164,16 @@ def interaction_panel(id):
             st.write('**'+product['product_key']+' · '+product['version']+'** — '+product['status'])
             if product.get('documentation_url'):
                 st.link_button('Архитектура и эксплуатация · BookStack',product['documentation_url'])
+            if story.get('repairs') and story['repairs']['defects']:
+                st.subheader('Замечания и исправления')
+                for defect in story['repairs']['defects']:
+                    with st.expander(defect['finding']['summary']+' — '+{'CONFIRMED':'Исправляется','RESOLVED':'Исправлено и перепроверено','DISMISSED':'Замечание не подтвердилось','TECHNICAL':'Нужно решение аналитика','PRODUCT':'Нужно продуктовое решение'}.get(defect['status'],defect['status'])):
+                        st.write('Критерий: '+defect['finding']['criterion']);st.write('Подтверждение: '+defect['finding']['evidence'])
+                        st.write('Перепроверка: '+defect['finding']['verification'])
+                        if defect.get('resolution'):st.write('Следующее действие: '+defect['resolution'].get('next_action','Проверка результата сохранена'))
+                        if defect.get('task_id'):st.link_button('Задача исправления','http://localhost:8080/work_packages/'+str(defect['task_id']))
+                        if defect.get('documentation_url'):st.link_button('История и доказательства',defect['documentation_url'])
+                with st.expander('История попыток исправления'):st.json(story['repairs']['attempts'])
             if product.get('package'):
                 st.caption('SHA256 пакета: '+product['package']['sha256'])
                 if st.button('Подготовить пакет к скачиванию'):
@@ -181,12 +191,12 @@ def interaction_panel(id):
                 st.caption(f"Сохранено версий рабочей копии: {workspace['version']}. Этап: {workspace['epic_index']+1}.")
                 state_names={'PENDING':'Ожидает начала','RUNNING':'Выполняется','CHECK_PENDING':'Ждёт проверки изменений',
                     'CHECKED':'Проверено, готовится к согласованию','WAITING_GITHUB':'Ждёт готовности публикации',
-                    'REVIEW':'Ждёт согласования изменений','MERGED':'Изменения согласованы','FAILED':'Требуется исправление'}
+                    'REVIEW':'Ждёт согласования изменений','CHECK_FAILED':'Команда разбирает ошибку','ESCALATED':'Нужно техническое решение аналитика','MERGED':'Изменения согласованы','FAILED':'Требуется исправление'}
                 titles={task['key']:task['title'] for epic in (story.get('plan') or {}).get('epics',[]) for task in epic['tasks']}
                 for task in workspace['tasks']:
-                    with st.expander(titles.get(task['task_key'],task['task_key'])+' — '+state_names.get(task['state'],task['state']),expanded=task['state'] not in ['PENDING','MERGED']):
+                    with st.expander(titles.get(task['task_key'],task.get('specification',{}).get('title',task['task_key']))+' — '+state_names.get(task['state'],task['state']),expanded=task['state'] not in ['PENDING','MERGED']):
                         st.link_button('Задача №'+str(task['task_id']),'http://localhost:8080/work_packages/'+str(task['task_id']))
-                        st.caption('Исполнитель: '+task['role']+f" · Сохранено действий: {task['sequence']}")
+                        st.caption('Исполнитель: '+task['role']+f" · Сохранено действий: {task['sequence']} · Попытка: {task.get('attempt',0)+1}")
                         if task.get('summary'):st.write(task['summary'])
                         if task.get('checks'):
                             checks=task['checks'];st.write('Проверки: '+('пройдены' if checks['passed'] else 'есть ошибки'))
