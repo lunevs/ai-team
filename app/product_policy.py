@@ -174,7 +174,7 @@ Python 3.12, Docker Engine/Desktop и Compose v2; 1 CPU / 512 MB на прило
 ## Общая инфраструктура продуктов
 
 Несколько продуктов используют одну среду. Один раз создайте внутреннюю сеть:
-`docker network create --internal ai-products`.
+`docker network create --internal --label ai-team.product-managed=true ai-products`.
 При необходимости используйте общую PostgreSQL, подключённую к этой сети;
 для каждого продукта выделяйте отдельную базу и роль с правами только в своей базе.
 Служебная PostgreSQL AI-команды для этого не используется.

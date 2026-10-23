@@ -46,6 +46,7 @@ class Finalize(BaseModel):
     number:int=Field(ge=1)
     commit:str=Field(pattern=r'^[0-9a-f]{40}$')
     version:str=Field(default='0.4.0',pattern=r'^[0-9]+\.[0-9]+\.[0-9]+$')
+    product_package:bool=False
 
 
 def auth(value):
@@ -174,7 +175,7 @@ def publish_task(data,task,base_sha):
         ('Продукт проверен изолированным оператором; отчёт тестов и LLM-review приложены. ' if data.product_package else 'SQL проверен sandbox и независимым QA. LLM-review аналитика приложено как артефакт. ')+ 'LLM-review не заменяет независимое GitHub-review. '
         'Автор PR не может одобрить собственный PR. Автослияние отключено.\n\n'+marker)
     return {'task_id':task.task_id,'epic_id':task.epic_id,'branch':branch,'release_branch':release,
-            'commit':sha,'pull_request_url':pr['html_url'],'number':pr['number'],'author':pr['user']['login']}
+            'product_package':data.product_package,'commit':sha,'pull_request_url':pr['html_url'],'number':pr['number'],'author':pr['user']['login']}
 
 @app.get('/health')
 def health():return {'status':'ok'}
@@ -187,21 +188,31 @@ def ready(authorization:str=Header(default='')):
     contract=github(REPO+'/contents/app/runtime_contract.json?ref='+result['object']['sha'],missing=True)
     try:valid=contract is not None and json.loads(base64.b64decode(contract['content']))['version']==4
     except (KeyError,ValueError,TypeError):valid=False
-    return {'configured':True,'base_sha':result['object']['sha'],'base_ready':valid}
+    product_ref=os.getenv('GITHUB_PRODUCT_BASE_REF','release/302')
+    product=github(REPO+'/git/ref/heads/'+product_ref,missing=True)
+    product_sha=product['object']['sha'] if product else None
+    product_contract=github(REPO+'/contents/app/product_runtime_contract.json?ref='+product_sha,missing=True) if product_sha else None
+    try:
+        product_valid=product_contract is not None and json.loads(base64.b64decode(product_contract['content']))=={
+            'version':1,'profile':'python-locked-v1','required_check':'product-checks'}
+    except (KeyError,ValueError,TypeError):product_valid=False
+    return {'configured':True,'base_sha':result['object']['sha'],'base_ready':valid,
+        'product_base_sha':product_sha,'product_base_ready':product_valid,'product_base_ref':product_ref}
 
 @app.post('/publish')
 def publish(data:Publish,authorization:str=Header(default='')):
     auth(authorization)
     if len({t.task_id for t in data.tasks})!=len(data.tasks):raise HTTPException(422,'Duplicate task')
     readiness=ready(authorization)
-    if not readiness.get('base_ready'):raise HTTPException(409,'Merge stage 3 implementation before runtime publication')
-    base=readiness['base_sha']
+    field='product_base_ready' if data.product_package else 'base_ready'
+    if not readiness.get(field):raise HTTPException(409,'Merge the matching runtime implementation and product CI before publication')
+    base=readiness['product_base_sha'] if data.product_package else readiness['base_sha']
     # Stable refs and markers reconcile partial publication after process/network failures.
     return {'pulls':[publish_task(data,task,base) for task in data.tasks],'independent_review_required':True,
-            'base_ref':os.getenv('GITHUB_BASE_REF','release/188'),'base_commit':base}
+            'base_ref':readiness['product_base_ref'] if data.product_package else os.getenv('GITHUB_BASE_REF','release/188'),'base_commit':base}
 
 
-def evaluate_pull(pr,reviews,checks,statuses,expected_commit):
+def evaluate_pull(pr,reviews,checks,statuses,expected_commit,product=False):
     reasons=[]
     if pr['head']['sha']!=expected_commit:reasons.append('PR changed after QA')
     if not pr.get('merged'):reasons.append('PR not merged')
@@ -216,6 +227,7 @@ def evaluate_pull(pr,reviews,checks,statuses,expected_commit):
     for check in checks:
         if check['name'] not in latest_checks or check.get('id',0)>latest_checks[check['name']].get('id',0):latest_checks[check['name']]=check
     required=[v for v in os.getenv('GITHUB_REQUIRED_CHECKS','application,validate').split(',') if v]
+    if product:required.append('product-checks')
     if any(name not in latest_checks or latest_checks[name]['status']!='completed' or latest_checks[name].get('conclusion')!='success' for name in required):reasons.append('Required CI checks not successful')
     if not latest_checks:reasons.append('No CI checks')
     elif any(c['status']!='completed' or c.get('conclusion') not in ['success','neutral','skipped'] for c in latest_checks.values()):reasons.append('CI not successful')
@@ -232,7 +244,7 @@ def gate(data:Pulls,authorization:str=Header(default='')):
         reviews=github(REPO+f'/pulls/{number}/reviews?per_page=100')
         checks=github(REPO+f'/commits/{expected}/check-runs?per_page=100')['check_runs']
         statuses=github(REPO+f'/commits/{expected}/status')
-        results.append({'number':number,**evaluate_pull(pr,reviews,checks,statuses,expected)})
+        results.append({'number':number,**evaluate_pull(pr,reviews,checks,statuses,expected,bool(item.get('product_package')))})
     return {'eligible':all(r['eligible'] for r in results),'pulls':results}
 
 @app.post('/release')
@@ -247,14 +259,14 @@ def release(data:Release,authorization:str=Header(default='')):
         'Результат принят заказчиком после независимого ревью task PR, успешного CI и их слияния. '
         'Выпуск в main требует отдельного независимого review, CI и ручного слияния. Автослияние отключено.')
     return {'epic_id':data.epic_id,'number':pr['number'],'commit':pr['head']['sha'],
-            'pull_request_url':pr['html_url'],'release_branch':branch}
+            'pull_request_url':pr['html_url'],'release_branch':branch,'product_package':any(p.get('product_package') for p in data.pulls)}
 
 @app.post('/finalize-release')
 def finalize_release(data:Finalize,authorization:str=Header(default='')):
     auth(authorization)
     pr=github(REPO+'/pulls/'+str(data.number))
     if pr['base']['ref']!='main' or pr['head']['ref']!='release/'+str(data.epic_id):raise HTTPException(409,'Release PR does not match epic')
-    if not gate(Pulls(pulls=[{'number':data.number,'commit':data.commit}]),authorization)['eligible']:
+    if not gate(Pulls(pulls=[{'number':data.number,'commit':data.commit,'product_package':data.product_package}]),authorization)['eligible']:
         raise HTTPException(409,'Release review/CI/merge gate incomplete')
     merge=pr.get('merge_commit_sha')
     if not merge or not re.fullmatch('[0-9a-f]{40}',merge):raise HTTPException(409,'Merge commit missing')

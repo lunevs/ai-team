@@ -164,6 +164,7 @@ def team(id:uuid.UUID,user=Depends(current_user)):
     from app.config import settings
     story=require_story(id)
     with db.connection() as conn:
+        story['product']=conn.execute('SELECT status FROM product_releases WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()
         story['execution']=conn.execute('SELECT status FROM execution_runs WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()
         results=conn.execute('SELECT role,revision FROM agent_results WHERE story_id=%s ORDER BY revision DESC',(id,)).fetchall()
         calls=conn.execute('SELECT role,revision,state FROM llm_calls WHERE story_id=%s',(id,)).fetchall()
@@ -181,7 +182,13 @@ def team(id:uuid.UUID,user=Depends(current_user)):
     available=True
     try:
         statuses={item['_links']['self']['href']:item for item in tracker.collection('/api/v3/statuses',role='pm')}
-        for item in tracker.collection(f'/api/v3/projects/{settings.project_id}/work_packages?pageSize=100',role='pm'):
+        import json
+        from urllib.parse import quote
+        ids=[str(link['external_id']) for link in links if link['key'].startswith(f"r{story['revision']}:task:")]
+        path=f'/api/v3/projects/{settings.project_id}/work_packages?pageSize=100'
+        filters=quote(json.dumps([{'id':{'operator':'=','values':ids}}]),safe='') if ids else ''
+        selected=tracker.collection(path+'&filters='+filters,role='pm') if ids else []
+        for item in selected:
             href=item.get('_links',{}).get('status',{}).get('href')
             status=dict(statuses.get(href,{}))
             status['isInProgress']=href==f"/api/v3/statuses/{settings.status_ids.get('IN_PROGRESS')}"
@@ -201,7 +208,7 @@ def synthetic_metadata(user=Depends(current_user)):
 
 @app.post('/stories/{id}/analytics/start',status_code=202)
 def start_analytics(id:uuid.UUID,user=Depends(current_user)):
-    require_story(id)
+    if require_story(id)['delivery_mode']!='credit_demo':raise db.Conflict('Используйте продуктовый процесс этой истории')
     with db.story_lock(id):
         with db.connection() as conn:
             story=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(id,)).fetchone()
@@ -263,7 +270,7 @@ def revise_analytics(id:uuid.UUID,data:Resume,user=Depends(current_user)):
 
 @app.post('/stories/{id}/execution/start',status_code=202)
 def start_execution(id:uuid.UUID,user=Depends(current_user)):
-    require_story(id)
+    if require_story(id)['delivery_mode']!='credit_demo':raise db.Conflict('Используйте продуктовый процесс этой истории')
     with db.story_lock(id):
         with db.connection() as conn:
             story=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(id,)).fetchone()

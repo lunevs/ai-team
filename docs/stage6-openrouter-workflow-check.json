@@ -1,0 +1,34 @@
+{
+  "backend": "openrouter",
+  "database": "disposable empty PostgreSQL",
+  "github": "tokenless broker; no PR writes",
+  "checks": [
+    "postgres_persistence_and_operator_leases",
+    "product_plan_without_credit_defaults",
+    "six_roles_and_product_package",
+    "separate_operator_authorization",
+    "package_sha256",
+    "real_product_container_tests",
+    "independent_fixture_result_42",
+    "stale_digest_rejected",
+    "independent_qa_and_architecture_reviews",
+    "eight_budgeted_openrouter_calls",
+    "no_deployment_without_git_review_merge",
+    "restart_no_duplicate_llm_or_package",
+    "cancel_prevents_operator_claim"
+  ],
+  "story_id": "7f1daa74-8184-408f-bbab-cb1d7221f695",
+  "usage": {
+    "calls": 8,
+    "tokens": 29654,
+    "estimated_cost_usd": 0.010684782,
+    "estimated_calls": 0,
+    "backends": [
+      "openrouter"
+    ],
+    "models": [
+      "deepseek/deepseek-v4.1-flash"
+    ]
+  },
+  "status": "passed"
+}

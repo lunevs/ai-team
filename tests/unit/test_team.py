@@ -33,3 +33,13 @@ def test_tracker_closure_and_outage():
 def test_cancelled_story_never_claims_active_work():
     data=projection({'_embedded':{'status':{'name':'Working','isInProgress':True}}},status='CANCELLED')
     assert all(x['current']=='История отменена' for x in data['agents'])
+
+
+def test_product_activity_and_history_use_product_roles():
+    story={'revision':1,'status':'IN_PROGRESS','approved':True,'delivery_mode':'product','plan':None,'product':{'status':'DEVELOPING'}}
+    result=project_team(story,[{'role':'product_solution','revision':1}],{},
+        [{'role':'application_developer','revision':1,'state':'reserved'}],[],{},True,True)
+    app=next(a for a in result['agents'] if a['role']=='application_developer')
+    assert app['current']=='Пишет приложение и тесты'
+    assert app['history'][0]['title']=='Подготовил исходники и тесты'
+    assert app['completed']==0 # source preparation does not close the tracker task

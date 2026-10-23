@@ -63,6 +63,17 @@ def accept(id:uuid.UUID,data:Approval,user=Depends(current_user)):
             db.enqueue(conn,id)
     return {'accepted':True,'release_merge_required':True}
 
+@router.post('/stories/{id}/product/retry-deployment')
+def retry_deployment(id:uuid.UUID,data:Approval,user=Depends(current_user)):
+    from app.delivery import broker
+    with db.story_lock(id):
+        story=db.active(id);record=products.get(id)
+        if not record or record['status']!='DEPLOY_FAILED':raise db.Conflict('Deployment is not awaiting retry')
+        if story['revision']!=data.revision or story['plan_digest']!=data.plan_digest:raise db.Conflict('Plan changed')
+        if not broker('/gate',{'pulls':record['git']['pulls']})['eligible']:raise db.Conflict('Independent Git review/CI/merge gate incomplete')
+        products.update(record['id'],status='DEPLOY_READY')
+    return {'status':'DEPLOY_READY'}
+
 @router.post('/product-operations/claim')
 def claim(user=Depends(operator)):
     with db.connection() as conn:
@@ -85,6 +96,9 @@ def validate_operation(id:uuid.UUID,data:OperatorReport,user=Depends(operator)):
             WHERE p.id=%s AND p.operation_id=%s AND p.lease_until>now() AND s.revision=p.revision
             AND s.approved AND s.status NOT IN ('CANCELLED','BLOCKED','FAILED')''',(id,data.operation_id)).fetchone()
         if not row or row['package']['sha256']!=data.package_sha256:raise db.Conflict('Operation stopped or changed')
+    if row['operation']=='deploy':
+        from app.delivery import broker
+        if not broker('/gate',{'pulls':row['git']['pulls']})['eligible']:raise db.Conflict('Git gate changed before deployment')
     return {'active':True}
 
 @router.post('/product-operations/{id}/report')

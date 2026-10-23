@@ -1,0 +1,8 @@
+{
+  "status": "passed",
+  "checks": [
+    "persistent service restart policy",
+    "persistent trusted gateway restart policy",
+    "gateway limited to 64MiB / 0.25 CPU"
+  ]
+}
