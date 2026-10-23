@@ -619,3 +619,6 @@ UI: новый режим истории, реестр версий, скачи�
 
 
 Дополнительная финальная проверка: 69 unit + 6 integration tests. Для продукта needs_database реализован hermetic smoke с временной пустой PostgreSQL/отдельной ролью и сетью; actual connect и SELECT 42 прошли, fixtures удалены. В Git введены отдельный product_runtime_contract v1 и GITHUB_PRODUCT_BASE_REF=release/302: до слияния PR реализации в эту базу публикация остаётся WAITING_GITHUB. В product PR и release PR обязателен дополнительный job product-checks (manifest/build/offline unittest/smoke); его точный CI entry point реально проверен на экспортированном временном пакете. Кредитные gates и их базовая ветка не менялись. Постоянный host-оператор всё ещё не установлен без разрешения.
+
+
+PR этапа 6: задача №303 — [#37](https://github.com/lunevs/ai-team/pull/37), №304 — [#38](https://github.com/lunevs/ai-team/pull/38), №305 — [#39](https://github.com/lunevs/ai-team/pull/39). Сливать по порядку в release/302; независимые review/CI сохраняются. Документационный PR #36 в release/288 остаётся отдельной зависимостью исходной базы. Без явного согласия постоянный LaunchAgent не установлен; API/UI работают, ручное исполнение оператора проверено.

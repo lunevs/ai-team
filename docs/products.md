@@ -124,3 +124,8 @@ PostgreSQL с отдельной ролью, закрытую сеть и вре
 настоящий DB connect/SELECT 42 без проектирования хранилища. scripts/run_stage6_ci_checks.py
 проверил именно CI entry point на экспортированном временном пакете.
 Отчёты stage6-database-product-check.json и stage6-ci-check.json.
+
+PR реализации: #37 → #38 → #39 в release/302. Без слияния финального продуктового
+контракта в эту базу Git-публикация нового продукта будет ожидать интеграции.
+При создании общей сети вручную используйте `docker network create --internal --label
+ai-team.product-managed=true ai-products`; оператор не захватывает чужую сеть без метки.
