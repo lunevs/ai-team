@@ -18,7 +18,7 @@ def broker(path,payload=None):
         return _broker(path,payload)
 
 def _broker(path,payload=None):
-    if path not in ['/ready','/publish','/gate','/release','/finalize-release']:raise ValueError('Broker route outside policy')
+    if path not in ['/ready','/publish','/gate','/release','/finalize-release','/feedback']:raise ValueError('Broker route outside policy')
     try:
         with httpx.Client(timeout=180) as client:
             response=client.request('GET' if payload is None else 'POST',os.getenv('GIT_BROKER_URL','http://git-broker:8000')+path,

@@ -112,13 +112,15 @@ def report(id:uuid.UUID,data:OperatorReport,user=Depends(operator)):
         if record['lease_until'] is None:
             # Identical successful retries after an ambiguous POST do not enqueue twice.
             return {'status':record['status']}
+        if not conn.execute('SELECT %s>now() AS active',(record['lease_until'],)).fetchone()['active']:raise db.Conflict('Operation lease expired')
         operation=record['operation']
         if operation=='check':
             passed=data.passed and data.tests_passed and data.health_passed and bool(data.image_id)
-            status='CHECKED' if passed else 'ESCALATED'
+            workspace_mode=(story.get('plan') or {}).get('development_mode')=='workspace'
+            status='CHECKED' if passed else 'REPAIR_PENDING' if workspace_mode else 'ESCALATED'
             conn.execute('UPDATE product_releases SET status=%s,qa=%s,lease_until=NULL,updated_at=now() WHERE id=%s',
                 (status,Jsonb(data.model_dump(mode='json')),id))
-            if passed:db.enqueue(conn,record['story_id'])
+            if passed or workspace_mode:db.enqueue(conn,record['story_id'])
             else:
                 conn.execute("UPDATE stories SET status='BLOCKED',error_type='ProductChecksFailed',updated_at=now() WHERE id=%s",(story['id'],))
                 conn.execute('INSERT INTO status_outbox(story_id) VALUES(%s) ON CONFLICT DO NOTHING',(story['id'],))

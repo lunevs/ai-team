@@ -22,7 +22,7 @@ DEFINITIONS = {
     'multi_epic': (True, 'Последовательная разработка нескольких эпиков', 'Эпики выполняются последовательно; следующий начинается после независимого review/CI и слияния предыдущего релиза в main.'),
     'interactive_browsing': (False, 'Исследование сайтов инструментами агента', 'У агентов нет инструмента браузера или поиска; URL в запросе сам по себе не прочитан.'),
     'incremental_workspace': (True, 'Доработка большого проекта по задачам', 'Сохраняемая рабочая копия, чтение/поиск и изменения отдельных файлов; проверки отдельным host-оператором; ветка/PR каждой задачи.'),
-    'automated_rework': (False, 'Автоматическое исправление замечаний', 'Отрицательная проверка пока останавливает продукт; цикл исправления относится к этапу 9.'),
+    'automated_rework': (True, 'Исправление подтверждённых замечаний', 'Дефекты с доказательствами, доработка по задачам, новые проверки и ревью; повторяющийся сбой передаётся аналитику, продуктовые развилки — PM.'),
 }
 
 
@@ -36,7 +36,7 @@ def registry():
                    'development': 'Последовательные действия над рабочей копией по задачам; один файл или операция за ответ. Только доверенный Python-профиль.'},
         'capabilities': {key: {'supported': supported, 'name': name, 'detail': detail}
                          for key, (supported, name, detail) in DEFINITIONS.items()},
-        'implementation_sha256': {name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in ['product_policy.py','product_contract.py','products.py','feasibility.py','workflow.py','workspaces.py','workspace_policy.py','planning.py']},
+        'implementation_sha256': {name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in ['product_policy.py','product_contract.py','products.py','feasibility.py','workflow.py','workspaces.py','workspace_policy.py','planning.py','rework.py','rework_contract.py']},
         'evidence': ['app/product_policy.py', 'app/product_contract.py', 'app/products.py',
                      'app/product_templates/runtime-requirements.lock', 'scripts/product_operator.py'],
     }

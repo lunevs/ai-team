@@ -28,7 +28,7 @@ def update(id,**values):
 
 def package_bytes(record):
     if not record.get('package'):raise db.Conflict('Package is not ready')
-    return read_artifact(record['id'],'product.zip',record['package'])
+    return read_artifact(record['package'].get('storage_id',record['id']),'product.zip',record['package'])
 
 
 def run(story_id):
@@ -59,7 +59,8 @@ def run(story_id):
             previous=contributions.setdefault(row['role'],{'specification':'','files':{}})
             previous['specification']+='\n'+(row['summary'] or '')
         content,metadata=build_package(solution,record['product_key'],record['version'],story_id,story['revision'],contributions)
-        manifest=store().put(record['id'],'product.zip',content)
+        manifest=store().put(uuid.uuid5(uuid.UUID(str(record['id'])),__import__('hashlib').sha256(content).hexdigest()),'product.zip',content)
+        manifest['storage_id']=str(uuid.uuid5(uuid.UUID(str(record['id'])),manifest['sha256']))
         page=knowledge.ensure_page(story_id,f"r{story['revision']}:product",solution.title,
             '# Продукт после выполнения задач\n\n'+solution.architecture+'\n\n'+solution.operating_notes+
             '\n\nПроверенные задачи и релизы:\n```json\n'+json.dumps(workspace['git'],ensure_ascii=False,indent=2)+'\n```')
@@ -89,24 +90,41 @@ def run(story_id):
         solution=ProductSolution.model_validate(solution.model_dump())
         content,metadata=build_package(solution,record['product_key'],record['version'],story_id,story['revision'],contributions)
         inspect_package(content)
-        manifest=store().put(record['id'],'product.zip',content)
+        manifest=store().put(uuid.uuid5(uuid.UUID(str(record['id'])),__import__('hashlib').sha256(content).hexdigest()),'product.zip',content)
+        manifest['storage_id']=str(uuid.uuid5(uuid.UUID(str(record['id'])),manifest['sha256']))
         page=knowledge.ensure_page(story_id,f"r{story['revision']}:product",solution.title,
             '# Самостоятельный продукт\n\n'+solution.architecture+'\n\n## Эксплуатация\n'+solution.operating_notes+
             '\n\n## Паспорт поставки\n```json\n'+json.dumps(metadata,ensure_ascii=False,indent=2)+'\n```')
         update(record['id'],status='CHECK_PENDING',specification=solution.model_dump()|{'contributions':contributions},package=manifest,documentation_url=page)
         with db.connection() as conn:db.event(conn,story,'product.packaged',{'product_key':record['product_key'],'sha256':manifest['sha256']},f"{record['id']}:packaged")
         return
+    if workspace_mode and record['status']=='REPAIR_PENDING':
+        from app.rework import product_failure
+        finding={'summary':'Итоговый пакет не прошёл проверку','criterion':'; '.join(story['pm']['acceptance_criteria'])[:2000],
+            'evidence':json.dumps(record['qa'],ensure_ascii=False)[-6000:],'severity':'major','verification':'Повторить тесты и независимые ревью полного пакета'}
+        product_failure(story,record,[finding],{'checks':record['qa']},actual_failure=True);return
     if record['status']=='CHECKED':
         # Review code once; repeated full planning/design/data documents can exhaust
         # conservative input reservations even when actual usage is well below budget.
         source={k:v for k,v in record['specification'].items() if k!='contributions'}
         business=record['specification'].get('contributions',{}).get('financial_analyst',{}).get('specification','')
         qa=generate(story_id,'qa',ProductReview,{'story':story['text'],'answers':story['answers'],'plan':story['plan'],'package_manifest':record['package'],'platform_files':['Dockerfile','docker-compose.yml','install.md','runtime-requirements.lock'],'solution':source,'business_rules':business,'checks':record['qa'],
-            'instruction':'Независимо оцени соответствие исходников критериям, адекватность тестов, экономические и граничные случаи. Реальный оператор выполнил тесты; не считай smoke достаточным для бизнес-приёмки. approved=false при ошибках или неподтверждённых требованиях.'},result_role='product_qa')
+            'instruction':'Независимо оцени соответствие исходников критериям, адекватность тестов, экономические и граничные случаи. Реальный оператор выполнил тесты; не считай smoke достаточным для бизнес-приёмки. approved=false при ошибках или неподтверждённых требованиях.'},result_role=('product_qa_'+str(record['review_round'])+'_'+record['package']['sha256'][:16]) if workspace_mode else 'product_qa')
         review=generate(story_id,'system_analyst',ProductReview,{'story':story['text'],'answers':story['answers'],'plan':story['plan'],'platform_files':['Dockerfile','docker-compose.yml','install.md','runtime-requirements.lock'],'solution':source,'checks':record['qa'],'qa':qa.model_dump(),
-            'instruction':'Проверь архитектуру, безопасность, самостоятельность, миграции и исходники. Не одобряй при серьёзных замечаниях; GitHub review остаётся отдельным.'},result_role='product_review')
+            'instruction':'Проверь архитектуру, безопасность, самостоятельность, миграции и исходники. Не одобряй при серьёзных замечаниях; GitHub review остаётся отдельным.'},result_role=('product_review_'+str(record['review_round'])+'_'+record['package']['sha256'][:16]) if workspace_mode else 'product_review')
         update(record['id'],review={'qa':qa.model_dump(),'architecture':review.model_dump()},status='READY_TO_PUBLISH' if qa.approved and review.approved else 'ESCALATED')
-        if not qa.approved or not review.approved:sync_status(story_id,'BLOCKED')
+        if not qa.approved or not review.approved:
+            if workspace_mode:
+                from app.rework import product_failure
+                findings=[{'summary':('Замечание проверяющего: '+f)[:1000],'criterion':'; '.join(story['pm']['acceptance_criteria'])[:2000],
+                    'evidence':('Замечание: '+f)[:6000],'severity':'major','verification':'Повторить независимое ревью исходников и полного пакета'} for r in [qa,review] for f in r.findings]
+                if not findings:findings=[{'summary':'Проверяющий не подтвердил готовность','criterion':'; '.join(story['pm']['acceptance_criteria'])[:2000],'evidence':'Отрицательное ревью без пояснений','severity':'major','verification':'Повторить проверку с конкретными доказательствами'}]
+                product_failure(story,record,findings,{'qa':qa.model_dump(),'architecture':review.model_dump()});return
+            sync_status(story_id,'BLOCKED')
+        if workspace_mode and qa.approved and review.approved:
+            from app.rework import resolved
+            from app.workspace_policy import source_digest
+            resolved(story,'product_'+str(record['id']),{'source_digest':source_digest(source['files']),'package_sha256':record['package']['sha256'],'checks':record['qa'],'qa':qa.model_dump(),'review':review.model_dump()})
         record=get(story_id)
     if record['status'] in {'READY_TO_PUBLISH','WAITING_GITHUB','PUBLISHED'}:
         publish(story,record)
@@ -183,8 +201,9 @@ def publish(story,record):
         if not any(t['role']=='application_developer' for t in tasks):raise db.Conflict('Plan requires an application developer task')
         git=broker('/publish',{'run_id':str(record['id']),'story_id':str(story['id']),'revision':story['revision'],
             'documentation_url':record['documentation_url'],'tasks':tasks,'product_package':True,
+            'supersedes':{str(p['task_id']):p['commit'] for p in (record['git'] or {}).get('pulls',[]) if p.get('product_package')} if workspace_mode else {},
             'workspace_delivery':workspace_mode,'previous_release':record['git'].get('previous_release') if workspace_mode else None})
-        if workspace_mode:git=record['git']|git|{'pulls':record['git']['pulls']+git['pulls']}
+        if workspace_mode:git=record['git']|git|{'pulls':list({p['task_id']:p for p in record['git']['pulls']+git['pulls']}.values())}
         update(record['id'],status='PUBLISHED',git=git)
         record=get(story['id'])
     for pull in record['git']['pulls']:
@@ -200,6 +219,11 @@ def publish(story,record):
     gate=broker('/gate',{'pulls':gate_pulls})
     if gate['eligible']:
         update(record['id'],status='DEPLOY_READY')
+    elif (story.get('plan') or {}).get('development_mode')=='workspace':
+        feedback=broker('/feedback',{'pulls':gate_pulls})
+        if feedback.get('findings'):
+            from app.rework import product_failure
+            product_failure(story,record,feedback['findings'],feedback,actual_failure=feedback.get('execution_failed',False))
 
 
 def public(record):

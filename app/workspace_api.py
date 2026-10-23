@@ -85,8 +85,9 @@ def report(id:uuid.UUID,data:WorkspaceReceipt,user=Depends(operator)):
             raise db.Conflict('Workspace receipt changed')
         if not row['lease_until'] or not conn.execute('SELECT %s>now() AS active',(row['lease_until'],)).fetchone()['active']:raise db.Conflict('Workspace lease expired')
         if data.tests_present!=(data.tests_run>0):raise db.Conflict('Invalid test accounting')
-        if row['intent']=='continue':state='RUNNING'
-        else:state='CHECKED' if data.passed else 'FAILED'
+        if not data.passed:state='CHECK_FAILED'
+        elif row['intent']=='continue':state='RUNNING'
+        else:state='CHECKED' if data.passed else 'CHECK_FAILED'
         observations=(row['observations']+[{'actual_checks':receipt}])[-12:]
         conn.execute('UPDATE workspace_tasks SET state=%s,checks=%s,observations=%s,lease_until=NULL,updated_at=now() WHERE id=%s',
             (state,Jsonb(receipt),Jsonb(observations),id))

@@ -50,7 +50,7 @@ def assess(story,scope,attempt,files,findings,evidence,owner,actual_failure=Fals
             defect=c.execute('''INSERT INTO product_defects(id,story_id,revision,scope,fingerprint,finding,status)
               VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(story_id,revision,scope,fingerprint)
               DO UPDATE SET updated_at=now() RETURNING *''',(uuid.uuid4(),story['id'],story['revision'],scope,fp,Jsonb(finding),status)).fetchone()
-        page=knowledge.ensure_page(story['id'],f"r{story['revision']}:defect:{defect['id']}",'Замечание: '+finding['summary'],
+        page=knowledge.ensure_page(story['id'],f"r{story['revision']}:defect:{defect['id']}:attempt:{attempt}:{digest[:12]}",'Замечание: '+finding['summary'],
             '# Замечание\n\n'+json.dumps(finding,ensure_ascii=False,indent=2)+'\n\nРешение аналитика: '+disposition.reason+'\nСледующее действие: '+decision.next_action+'\nИсходники: '+digest)
         task_id=defect['task_id']
         if status!='DISMISSED' and not task_id:
@@ -91,7 +91,11 @@ def assess(story,scope,attempt,files,findings,evidence,owner,actual_failure=Fals
 
 def task_failure(story,task,findings,evidence,actual_failure=False):
     result=assess(story,'task_'+str(task['task_id']),task['attempt'],task['files'],findings,evidence,task['role'],actual_failure)
+    if task['repair_context'].get('product_scope'):result['product_scope']=task['repair_context']['product_scope']
     state='ESCALATED' if result['escalation'] else 'RUNNING' if result['defects'] else 'CHECKED'
+    if state=='RUNNING':
+        from app.workspaces import set_tracker_status
+        set_tracker_status(task['task_id'],'IN_PROGRESS')
     if state=='CHECKED':
         with db.connection() as c:
             c.execute("UPDATE workspace_tasks SET state='CHECKED',attempt=attempt+1,review=%s,repair_context=%s WHERE id=%s",(Jsonb({'approved':True,'source_digest':source_digest(task['files']),'triage':result}),Jsonb(result),task['id']))
@@ -109,6 +113,37 @@ def resolved(story,scope,proof):
     with db.connection() as c:rows=c.execute("SELECT * FROM product_defects WHERE story_id=%s AND revision=%s AND scope=%s AND status='CONFIRMED'",(story['id'],story['revision'],scope)).fetchall()
     for row in rows:
         if row['task_id']:set_tracker_status(row['task_id'],'DONE')
-        knowledge.ensure_page(story['id'],f"r{story['revision']}:defect:{row['id']}:resolution",'Перепроверка: '+row['finding']['summary'],
+        knowledge.ensure_page(story['id'],f"r{story['revision']}:defect:{row['id']}:resolution:{proof['source_digest'][:12]}",'Перепроверка: '+row['finding']['summary'],
             '# Исправление подтверждено\n\n'+json.dumps(proof,ensure_ascii=False,default=str,indent=2)+'\n\nПервичное замечание: '+str(row['documentation_url']))
         with db.connection() as c:c.execute("UPDATE product_defects SET status='RESOLVED',resolution=%s,updated_at=now() WHERE id=%s",(Jsonb(proof),row['id']))
+
+
+def product_failure(story,record,findings,evidence,actual_failure=False):
+    """Create repair tasks in the final epic; retain immutable older package and history."""
+    from app import products,workspaces
+    workspace=workspaces.get(story['id'],story['revision']);scope='product_'+str(record['id'])
+    result=assess(story,scope,record['review_round'],workspace['files'],findings,evidence,'application_developer',actual_failure)
+    if result['escalation']:
+        products.update(record['id'],status='ESCALATED');return
+    if not result['defects']:
+        products.update(record['id'],status='READY_TO_PUBLISH')
+        workspaces.schedule(story['id']);return
+    epic=story['plan']['epics'][-1]
+    epic_id=db.external(story['id'],f"r{story['revision']}:epic:{epic['key']}")['external_id']
+    with db.connection() as c:
+        for defect in result['defects']:
+            key='repair_'+defect['id'].replace('-','')+'_'+str(record['review_round'])
+            # A merged task branch is never reopened: each follow-up has its own tracker task.
+            from app.config import settings
+            repair_task=tracker.ensure(story['id'],f"r{story['revision']}:task:{key}",'Исправить: '+defect['finding']['summary'],
+                'Дефект: '+str(defect['task_id'])+'\nКритерий: '+defect['finding']['criterion']+'\nПерепроверка: '+defect['finding']['verification']+'\nСледующее действие: '+result['next_action'],
+                1,parent=epic_id,assignee=settings.agent_ids.get('application_developer'))
+            spec={'key':key,'title':'Исправить: '+defect['finding']['summary'],'role':'application_developer',
+                'acceptance_criteria':[defect['finding']['criterion'],defect['finding']['verification']],'depends_on':[]}
+            c.execute('''INSERT INTO workspace_tasks(id,workspace_id,task_key,task_id,epic_id,role,specification,repair_context)
+             VALUES(%s,%s,%s,%s,%s,'application_developer',%s,%s) ON CONFLICT(workspace_id,task_key)
+             DO UPDATE SET state='PENDING',review=NULL,checks=NULL,repair_context=excluded.repair_context,attempt=workspace_tasks.attempt+1''',
+                (uuid.uuid4(),workspace['id'],key,repair_task,epic_id,Jsonb(spec),Jsonb(result|{'product_scope':scope})))
+        c.execute('''UPDATE product_releases SET status='DEVELOPING_TASKS',review_round=review_round+1,
+           package=NULL,qa=NULL,review=NULL,accepted=false,deployment=NULL,operation_id=NULL,lease_until=NULL WHERE id=%s''',(record['id'],))
+        db.enqueue(c,story['id'])
