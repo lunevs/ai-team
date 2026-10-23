@@ -58,3 +58,31 @@ def test_dismissed_github_feedback_waits_without_repeating_llm_or_bypassing_revi
             c.execute('DELETE FROM workspace_tasks WHERE workspace_id=%s',(wid,));c.execute('DELETE FROM product_workspaces WHERE id=%s',(wid,))
             for table in ['events','jobs']:c.execute('DELETE FROM '+table+' WHERE story_id=%s',(sid,))
             c.execute('DELETE FROM stories WHERE id=%s',(sid,))
+
+
+def test_repeated_file_action_preserves_code_and_routes_to_analysis(monkeypatch):
+    from psycopg.types.json import Jsonb
+    from app.workspace_contract import WorkspaceAction
+    row,_=db.create_story(StoryInput(text='Проверка остановки повторяющегося чтения без прогресса',synthetic_only=True,delivery_mode='product'),'action-stall-'+str(uuid.uuid4()))
+    sid=row['id'];wid=uuid.uuid4();tid=uuid.uuid4();calls=[]
+    try:
+        with db.connection() as c:
+            c.execute('INSERT INTO product_workspaces(id,story_id,revision,definition) VALUES(%s,%s,1,%s)',(wid,sid,Jsonb({})))
+            c.execute("INSERT INTO workspace_tasks(id,workspace_id,task_key,task_id,epic_id,role,specification,state,files,base_version) VALUES(%s,%s,'build',9998,9997,'application_developer',%s,'RUNNING',%s,0)",
+                (tid,wid,Jsonb({'key':'build','title':'Создать сервис','depends_on':[],'acceptance_criteria':['Результат 42']}),Jsonb({'app.py':'value=41'})))
+        story=dict(row)|{'plan':{'epics':[{'key':'one','tasks':[{'key':'build'}]}]}}
+        monkeypatch.setattr(db,'external',lambda *a:{'external_id':9997})
+        monkeypatch.setattr(workspaces,'generate',lambda *a,**kw:WorkspaceAction(operation='read',path='app.py',summary='Прочитать текущие исходники'))
+        monkeypatch.setattr(rework,'task_failure',lambda *a,**kw:calls.append((a,kw)))
+        for _ in range(3):workspaces.advance(story)
+        with db.connection() as c:
+            saved=c.execute('SELECT state,files,checks FROM workspace_tasks WHERE id=%s',(tid,)).fetchone()
+            assert saved['state']=='CHECK_FAILED' and saved['files']=={'app.py':'value=41'}
+            assert saved['checks']['error_type']=='NoProgress' and saved['checks']['tests_run']==0
+        workspaces.advance(story)
+        assert calls[0][0][3]['stalled_action'] and not calls[0][1]['actual_failure']
+    finally:
+        with db.connection() as c:
+            c.execute('DELETE FROM workspace_tasks WHERE workspace_id=%s',(wid,));c.execute('DELETE FROM product_workspaces WHERE id=%s',(wid,))
+            for table in ['events','jobs']:c.execute('DELETE FROM '+table+' WHERE story_id=%s',(sid,))
+            c.execute('DELETE FROM stories WHERE id=%s',(sid,))

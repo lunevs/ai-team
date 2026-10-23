@@ -4,8 +4,8 @@
     "010_rework",
     "011_repair_source_archive"
   ],
-  "unit_tests": 111,
-  "postgres_integration_tests": 10,
+  "unit_tests": 112,
+  "postgres_integration_tests": 11,
   "isolated_workflow_checks": 58,
   "ui_repair_render_errors": 0,
   "real_model_review_checks": 2,

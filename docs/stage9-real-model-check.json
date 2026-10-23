@@ -6,8 +6,8 @@
   ],
   "usage": {
     "calls": 2,
-    "tokens": 1505,
-    "estimated_cost_usd": 0.000476178,
+    "tokens": 1503,
+    "estimated_cost_usd": 0.000297114,
     "estimated_calls": 0,
     "backends": [
       "openrouter"
