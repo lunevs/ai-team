@@ -11,7 +11,7 @@ from app.integrations import knowledge,tracker,sync_status,RetryableIntegrationE
 from app.reports import create_workbook,monthly,STYLE
 from app.observability import tracer
 
-ARTIFACT_FILES={'report.xlsx','query.sql','qa.json','review.json','financial.json','style.md','architecture.md','acceptance.md','dashboard.py'}
+from app.storage import NAMES as ARTIFACT_FILES,store,read_artifact
 
 def broker(path,payload=None):
     with tracer.start_as_current_span('tool.github',attributes={'stage':path.strip('/').replace('-','_')}):
@@ -98,6 +98,11 @@ def finalize_delivery(story,record):
     event(story,'execution.completed',{},f"{record['id']}:completed")
 
 def prepare_and_publish(story,record):
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="ai-team-artifacts-") as workspace:
+        return _prepare_and_publish(story,record,Path(workspace))
+
+def _prepare_and_publish(story,record,root):
     from app.execution import update,event
     if not record['qa']['passed'] or not record['review']['approved']:raise db.Conflict('QA and architecture review required')
     tracker.honor_remote_stop(story['id'])
@@ -105,7 +110,6 @@ def prepare_and_publish(story,record):
         spec=conn.execute('SELECT * FROM analytics_runs WHERE story_id=%s AND revision=%s',(story['id'],story['revision'])).fetchone()
         dataset=conn.execute('SELECT version,seed,checksum FROM synthetic.dataset_info WHERE singleton=true').fetchone()
     if not spec or spec['status']!='APPROVED' or spec['digest']!=record['analytics_digest']:raise db.Conflict('Analytical approval changed')
-    root=artifact_path(record['id'],'query.sql').parent;root.mkdir(parents=True,exist_ok=True)
     metadata={'dataset':f"{dataset['version']}, seed {dataset['seed']}",'checksum':dataset['checksum'],
               'sql_digest':hashlib.sha256(record['sql_text'].encode()).hexdigest(),'story_id':str(story['id']),
               'revision':story['revision'],'created_at':record['created_at'].isoformat()}
@@ -121,17 +125,14 @@ def prepare_and_publish(story,record):
            'dashboard.py':'# Declarative dashboard specification; generated Python is never executed.\nMETRICS = '+repr(['balance','dpd30_balance','dpd90_balance','npl90_ratio','interest_income'])+'\nGRAIN = ("month", "product_id", "region")\n'}
     if record['artifacts']:
         artifacts=record['artifacts']
-        for name,manifest in artifacts.items():
-            path=artifact_path(record['id'],name)
-            if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest()!=manifest['sha256']:
-                raise db.Conflict('Previously verified artifact is missing or changed')
+        for name,manifest in artifacts.items():read_artifact(record['id'],name,manifest)
     else:
         for name,content in files.items():(root/name).write_text(content)
         with tracer.start_as_current_span('artifact.publish',attributes={'story_id':str(story['id']),'backend':'deterministic'}):
             with tracer.start_as_current_span('agent.financial_analyst',attributes={'role':'financial_analyst','backend':'deterministic'}):
                 create_workbook(record['rows'],metadata,root/'report.xlsx')
-        artifacts={name:{'url':f"/stories/{story['id']}/execution/artifacts/{name}",'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
-                         'size':path.stat().st_size} for name in ARTIFACT_FILES if (path:=root/name).exists()}
+        storage=store()
+        artifacts={name:storage.put(record['id'],name,(root/name).read_bytes())|{'url':f"/stories/{story['id']}/execution/artifacts/{name}"} for name in sorted(ARTIFACT_FILES)}
     update(record['id'],artifacts=artifacts)
     for role in ['designer','financial_analyst','application_developer','qa']:
         event(story,'delivery.artifact',{'role':role,'backend':'deterministic','run_id':str(record['id'])},f"{record['id']}:artifact:{role}")
@@ -154,7 +155,7 @@ def prepare_and_publish(story,record):
             task_ref=db.external(story['id'],f"r{story['revision']}:task:{task['key']}")
             if not task_ref:raise db.Conflict('Missing tracker task')
             tasks.append({'task_id':int(task_ref['external_id']),'epic_id':int(epic_ref['external_id']),'role':task['role'],
-                          'files':{n:base64.b64encode((root/n).read_bytes()).decode() for n in role_files[task['role']]}})
+                          'files':{n:base64.b64encode(read_artifact(record['id'],n,artifacts[n])).decode() for n in role_files[task['role']]}})
     tracker.honor_remote_stop(story['id'])
     result=publish_tasks(story,record,doc,tasks)
     # Persist actual PR identities before tracker writes, allowing safe retry after an outage.

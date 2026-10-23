@@ -1,0 +1,13 @@
+{
+  "service": "Garage 2.4.1, official pinned ARM64 image",
+  "backend": "s3, local test",
+  "checks": [
+    "real SigV4 PUT and GET preserve bytes and SHA256",
+    "repeated write returns same manifest",
+    "separate reader GET succeeds and PUT is rejected",
+    "legacy local manifests and integrity failures covered by unit tests",
+    "external plaintext HTTP and credential-bearing endpoint rejected"
+  ],
+  "unit_integration_tests": 47,
+  "cloud_verified": false
+}
