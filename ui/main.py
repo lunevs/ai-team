@@ -152,10 +152,33 @@ def interaction_panel(id):
                     except httpx.TransportError:st.error('API временно недоступен')
             if product['status']=='CHECK_PENDING':
                 st.info('Пакет ждёт host-оператора: сборка и изолированные тесты. Оператор запускается отдельно от контейнеров команды.')
+            needs_attention=product['status'] in ['ESCALATED','DEPLOY_FAILED']
+            reviews=product.get('review') or {}
+            if needs_attention:
+                st.subheader('Что нужно исправить')
+                st.warning('Работа остановлена. Ниже — замечания проверяющих и причина остановки.')
+                if (product.get('qa') or {}).get('passed'):
+                    st.info('Приложение запускается и проходит базовые тесты. Это ещё не подтверждает выполнение ваших требований.')
+            has_findings=False
+            for role,label in [('qa','Проверка выполнения требований'),('architecture','Проверка устройства и надёжности решения')]:
+                conclusion=reviews.get(role) or {}
+                findings=conclusion.get('findings') or []
+                if findings:
+                    has_findings=True
+                    with st.expander(label,expanded=needs_attention):
+                        st.caption('Проверяющий одобрил результат' if conclusion.get('approved') else 'Проверяющий не одобрил результат')
+                        for number,finding in enumerate(findings,1):
+                            st.write(f'{number}. {finding}')
+            if needs_attention and not has_findings:
+                st.write('Подробных замечаний проверяющих пока нет: остановка произошла при проверке или запуске приложения.')
+                if (product.get('qa') or {}).get('error_type'):
+                    st.caption('Код ошибки проверки: '+product['qa']['error_type'])
+                if (product.get('deployment') or {}).get('error_type'):
+                    st.caption('Код ошибки запуска: '+product['deployment']['error_type'])
             if product.get('qa'):
                 with st.expander('Фактическая проверка контейнера'):st.json(product['qa'])
             if product.get('review'):
-                with st.expander('Независимые заключения QA и архитектора'):st.json(product['review'])
+                with st.expander('Технические подробности заключений'):st.json(product['review'])
             for pr in (product.get('git') or {}).get('pulls',[]):
                 st.link_button('PR задачи #'+str(pr['task_id']),pr['pull_request_url'])
             release=(product.get('git') or {}).get('release')
@@ -169,8 +192,6 @@ def interaction_panel(id):
                 st.caption('Приёмка подтверждает бизнес-результат. Релиз в main требует отдельного review/CI/слияния.')
                 if st.button('Принять самостоятельный продукт',type='primary'):
                     if request('/stories/'+id+'/product/accept','POST',{'revision':story['revision'],'plan_digest':story['plan_digest']}):st.rerun()
-            if product['status'] in ['ESCALATED','DEPLOY_FAILED']:
-                st.warning('Нужен разбор замечаний. Тесты или развёртывание не подтверждены; готовность не заявлена.')
             if product['status']=='DEPLOY_FAILED':
                 if st.button('Повторить запуск после исправления настроек'):
                     if request('/stories/'+id+'/product/retry-deployment','POST',{'revision':story['revision'],'plan_digest':story['plan_digest']}):st.rerun()
