@@ -76,10 +76,12 @@ def test_runtime_requires_merged_implementation_base(monkeypatch):
     monkeypatch.setenv('GIT_BROKER_API_TOKEN','internal-test')
     monkeypatch.setenv('GITHUB_RUNTIME_TOKEN','github-test')
     contract=[None]
+    product_contract=[None]
     def github(path,method='GET',data=None,missing=False):
         assert method=='GET'
         if '/git/ref/heads/' in path:return {'object':{'sha':'a'*40}}
         if '/contents/app/runtime_contract.json' in path:return contract[0]
+        if '/contents/app/product_runtime_contract.json' in path:return product_contract[0]
         raise AssertionError(path)
     monkeypatch.setattr(broker,'github',github)
     assert broker.ready('Bearer internal-test')['base_ready'] is False
@@ -89,3 +91,6 @@ def test_runtime_requires_merged_implementation_base(monkeypatch):
     assert error.value.status_code==409
     contract[0]={'content':base64.b64encode(b'{"version":4}').decode()}
     assert broker.ready('Bearer internal-test')['base_ready'] is True
+    assert broker.ready('Bearer internal-test')['product_base_ready'] is False
+    product_contract[0]={'content':base64.b64encode(b'{"version":1,"profile":"python-locked-v1","required_check":"product-checks"}').decode()}
+    assert broker.ready('Bearer internal-test')['product_base_ready'] is True

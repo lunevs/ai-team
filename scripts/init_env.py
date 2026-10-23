@@ -17,11 +17,13 @@ values = {
     'MARIADB_ROOT_PASSWORD': secrets.token_hex(24),
     'BOOKSTACK_APP_KEY': 'base64:' + base64.b64encode(secrets.token_bytes(32)).decode(),
 }
-with path.open('a') as stream:
-    if text and not text.endswith('\n'):
-        stream.write('\n')
-    for key, value in values.items():
-        if key not in keys:
-            stream.write(f'{key}={value}\n')
+lines=text.splitlines()
+for key,value in values.items():
+    indices=[i for i,line in enumerate(lines) if line.partition('=')[0].strip()==key]
+    if not indices:
+        lines.append(f'{key}={value}')
+    elif not lines[indices[-1]].partition('=')[2].strip():
+        lines[indices[-1]]=f'{key}={value}'
+path.write_text('\n'.join(lines)+'\n')
 path.chmod(0o600)
 print('Локальные настройки дополнены; значения секретов скрыты.')

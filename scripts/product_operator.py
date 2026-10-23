@@ -26,6 +26,7 @@ from app.product_policy import inspect_package
 ROOT=Path(__file__).resolve().parents[1]
 STATE=ROOT/'.local/product-operator'
 API_URL='http://127.0.0.1:8000'
+LOGGER=None
 
 class OperationFailed(Exception):
     def __init__(self,kind):self.kind=kind
@@ -87,7 +88,7 @@ def extract(content,directory):
     return metadata,destination
 
 
-def restricted(image,*,name,network='none',volume=None,env_file=None,port=None,detach=False,entry=None):
+def restricted(image,*,name,network='none',volume=None,env_file=None,port=None,detach=False,entry=None,persistent=False):
     args=['run','--name',name,'--label','ai-team.product-managed=true',
         '--user','10001:10001','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true',
         '--pids-limit','64','--cpus','1','--memory','512m','--memory-swap','512m',
@@ -97,6 +98,7 @@ def restricted(image,*,name,network='none',volume=None,env_file=None,port=None,d
     else:args+=['--tmpfs','/data:rw,nosuid,nodev,size=16m,uid=10001,gid=10001']
     if env_file:args+=['--env-file',str(env_file)]
     if port:args+=['--publish',f'127.0.0.1:{port}:8000']
+    if persistent:args+=['--restart','unless-stopped']
     if detach:args+=['--detach']
     if entry:args+=['--entrypoint',entry]
     return args+[image]
@@ -123,6 +125,26 @@ def health(name):
     raise OperationFailed('HealthFailed')
 
 
+def test_database(name,directory):
+    import secrets
+    from app.product_policy import BASE_IMAGE
+    pg=name+'-postgres';net=name+'-network';password=secrets.token_hex(24)
+    image='postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94'
+    docker('network','create','--internal','--label','ai-team.product-managed=true',net)
+    private=directory/'postgres.env';private.write_text('POSTGRES_PASSWORD='+password+'\n');private.chmod(0o600)
+    docker('run','--detach','--name',pg,'--label','ai-team.product-managed=true','--network',net,
+        '--env-file',str(private),'--memory','256m','--cpus','0.5','--pids-limit','64',
+        '--tmpfs','/var/lib/postgresql/data:rw,size=128m',image)
+    deadline=time.monotonic()+30
+    while docker('exec',pg,'pg_isready','-h','127.0.0.1','-U','postgres',check=False).returncode:
+        if time.monotonic()>deadline:raise OperationFailed('TestsFailed')
+        time.sleep(0.5)
+    sql=f"CREATE ROLE product LOGIN PASSWORD '{password}' NOSUPERUSER NOCREATEDB NOCREATEROLE;CREATE DATABASE product OWNER product;REVOKE CONNECT ON DATABASE product FROM PUBLIC;GRANT CONNECT ON DATABASE product TO product;"
+    docker('exec','-i',pg,'psql','-U','postgres','-v','ON_ERROR_STOP=1',input=sql.encode())
+    env=directory/'product.env';env.write_text(f'DATABASE_URL=postgresql://product:{password}@{pg}/product\nOUTPUT_DIR=/data\n');env.chmod(0o600)
+    return net,env
+
+
 def check_package(content,operation):
     report={'passed':False,'tests_passed':False,'health_passed':False,'image_id':'','result':{}}
     name='ai-product-check-'+str(operation['operation_id'])[:12]
@@ -139,23 +161,34 @@ def check_package(content,operation):
             if test.returncode or not re.search(rb'Ran [1-9][0-9]* tests?',test.stderr):raise OperationFailed('TestsFailed')
             report['tests_passed']=True
             remove_container(name)
+            smoke_network,smoke_env=test_database(name,Path(temporary)) if metadata['needs_database'] else ('none',None)
             if metadata['kind']=='service':
-                command(['docker',*restricted(image,name=name,detach=True)],timeout=20)
+                command(['docker',*restricted(image,name=name,detach=True,network=smoke_network,env_file=smoke_env)],timeout=20)
                 health(name)
                 response=probe(name,'/result')
                 if response.returncode:raise OperationFailed('HealthFailed')
+                try:
+                    value=json.loads(response.stdout)
+                    if len(response.stdout)<=8000:report['result']=value if isinstance(value,dict) and len(value)<=8 else {'value':value}
+                except (ValueError,TypeError):pass
             else:
-                test=command(['docker',*restricted(image,name=name)],timeout=90,check=False)
+                test=command(['docker',*restricted(image,name=name,network=smoke_network,env_file=smoke_env)],timeout=90,check=False)
                 if test.returncode:raise OperationFailed('TestsFailed')
                 # /data is tmpfs for the isolated job check; inspect result before exit via wrapper.
                 remove_container(name)
                 check_code="import runpy,json,pathlib;runpy.run_path('app.py',run_name='__main__');p=pathlib.Path('/data/result.json');assert p.is_file() and p.stat().st_size<=65536;json.loads(p.read_text())"
-                test=command(['docker',*restricted(image,name=name),'python','-c',check_code],timeout=90,check=False)
+                test=command(['docker',*restricted(image,name=name,network=smoke_network,env_file=smoke_env),'python','-c',check_code],timeout=90,check=False)
                 if test.returncode:raise OperationFailed('TestsFailed')
             report['health_passed']=True;report['passed']=True
     except OperationFailed as exc:report['error_type']=exc.kind
     except (ValueError,KeyError,TypeError):report['error_type']='PolicyRejected'
-    finally:remove_container(name)
+    finally:
+        remove_container(name)
+        remove_container(name+'-postgres')
+        net=docker('network','inspect',name+'-network',check=False)
+        if net.returncode==0:
+            if json.loads(net.stdout)[0].get('Labels',{}).get('ai-team.product-managed')!='true':raise OperationFailed('PolicyRejected')
+            docker('network','rm',name+'-network')
     return report
 
 
@@ -186,7 +219,8 @@ def product_env(key):
 def gateway(name,target,port):
     from app.product_policy import BASE_IMAGE,proxy_code
     remove_container(name)
-    args=restricted(BASE_IMAGE,name=name,network='bridge',port=port)
+    args=restricted(BASE_IMAGE,name=name,network='bridge',port=port,persistent=True)
+    for flag,value in [('--memory','64m'),('--memory-swap','64m'),('--cpus','0.25'),('--pids-limit','32')]:args[args.index(flag)+1]=value
     args[0]='create'
     command(['docker',*args,'python','-c',proxy_code(target)])
     docker('network','connect','ai-products',name)
@@ -271,7 +305,7 @@ def deploy_package(content,operation):
                 '--security-opt','no-new-privileges:true','--mount',f'type=volume,source={volume},target=/data',
                 BASE_IMAGE,'chown','10001:10001','/data',timeout=20)
         port=(port or free_port()) if metadata['kind']=='service' else None
-        command(['docker',*restricted(image,name=name,network='ai-products',volume=volume,env_file=env_file,detach=metadata['kind']=='service')],timeout=90)
+        command(['docker',*restricted(image,name=name,network='ai-products',volume=volume,env_file=env_file,detach=metadata['kind']=='service',persistent=metadata['kind']=='service')],timeout=90)
         if metadata['kind']=='service':
             health(name)
             response=probe(name,'/result')
@@ -338,7 +372,9 @@ def once():
                 docker('stop','--time','10',name,check=False)
                 docker('stop','--time','10',name+'-gateway',check=False)
         raise
-    print(json.dumps({'product':operation['product_key'],'operation':operation['operation'],'status':result['status']}))
+    message=json.dumps({'product':operation['product_key'],'operation':operation['operation'],'status':result['status']})
+    if LOGGER:LOGGER.info(message)
+    else:print(message,flush=True)
     return True
 
 if __name__=='__main__':
@@ -347,7 +383,14 @@ if __name__=='__main__':
     args=parser.parse_args()
     if args.once:once()
     else:
+        import logging
+        from logging.handlers import RotatingFileHandler
+        os.umask(0o077)
+        STATE.mkdir(parents=True,exist_ok=True,mode=0o700)
+        LOGGER=logging.getLogger('product-operator');LOGGER.setLevel(logging.INFO)
+        LOGGER.addHandler(RotatingFileHandler(STATE/'operations.log',maxBytes=1_000_000,backupCount=2,encoding='utf-8'))
         while True:
             try:once()
-            except (OperationFailed,urllib.error.URLError):print('Product operator unavailable; no secret/log content displayed',flush=True)
+            except (OperationFailed,urllib.error.URLError,ValueError,KeyError):
+                LOGGER.warning('Operator unavailable; credentials and model logs withheld')
             time.sleep(5)

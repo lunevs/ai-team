@@ -43,6 +43,18 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
             cards[role]['history'].append({'title':'Подготовлен SQL' if role=='data_developer' else 'Ревью SQL',
                 'revision':result['revision'],'completed_at':completions.get((result['role'],result['revision'])),
                 'url':None,'source':'agent'})
+    product_results={
+        'product_financial_analyst':('financial_analyst','Подготовил экономические критерии'),
+        'product_designer':('designer','Подготовил стиль продукта'),
+        'product_data_developer':('data_developer','Спроектировал данные продукта'),
+        'product_solution':('application_developer','Подготовил исходники и тесты'),
+        'product_qa':('qa','Проверил исходники и результаты тестов'),
+        'product_review':('system_analyst','Проверил архитектуру продукта')}
+    for result in results:
+        if result['role'] in product_results:
+            role,title=product_results[result['role']]
+            cards[role]['history'].append({'title':title,'revision':result['revision'],
+                'completed_at':completions.get((result['role'],result['revision'])),'url':None,'source':'agent'})
     for call in calls:
         if call['role']=='data_developer' and call['state']=='reserved' and call['revision']==story['revision'] and worker_active and not stopped:
             cards['data_developer']['current']='Разрабатывает SQL-витрину'
@@ -76,6 +88,20 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
                 card['remaining'] += 1
                 if status.get('isInProgress') and not stopped:
                     card['current'] = task['title']
+    if story.get('delivery_mode')=='product' and worker_active and not stopped:
+        activity={'financial_analyst':'Определяет экономические критерии','designer':'Готовит стиль продукта',
+            'data_developer':'Проектирует данные продукта','application_developer':'Пишет приложение и тесты',
+            'qa':'Проверяет продукт и тесты','system_analyst':'Проверяет архитектуру продукта'}
+        for call in calls:
+            if call['revision']==story['revision'] and call['state']=='reserved' and call['role'] in activity:
+                cards[call['role']]['current']=activity[call['role']]
+    product_status=(story.get('product') or {}).get('status')
+    product_wait={'CHECK_PENDING':'Ожидает изолированных тестов','WAITING_GITHUB':'Ожидает публикации PR',
+        'PUBLISHED':'Ожидает GitHub review и слияния','DEPLOY_READY':'Ожидает запуска продукта',
+        'ACCEPTANCE':'Ожидает приёмки продукта','RELEASE_REVIEW':'Ожидает выпуска в main'}
+    if not stopped and product_status in product_wait:
+        for card in cards.values():
+            if card['remaining']:card['current']=product_wait[product_status]
     execution=story.get('execution') or {}
     active_role={'QA':'qa','ARCHITECT_REVIEW':'system_analyst','DEVELOPING':'data_developer','READY_TO_PUBLISH':'application_developer'}.get(execution.get('status'))
     if active_role and worker_active and not stopped:cards[active_role]['current']={'qa':'Проверяет расчёт витрины','system_analyst':'Проверяет SQL и архитектуру','data_developer':'Разрабатывает SQL-витрину','application_developer':'Готовит отчёт и публикацию'}[active_role]

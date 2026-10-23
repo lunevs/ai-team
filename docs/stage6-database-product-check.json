@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "checks": [
+    "offline unittest",
+    "isolated empty PostgreSQL for needs_database smoke",
+    "actual DB connection and SELECT 42",
+    "HTTP health and result",
+    "temporary database/network cleanup"
+  ]
+}

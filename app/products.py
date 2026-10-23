@@ -59,7 +59,7 @@ def run(story_id):
                 raise db.Conflict('Data developer sources must stay in data/ or migrations/')
             contributions[role]=contribution.model_dump()
         solution=generate(story_id,'application_developer',ProductSolution,context|{'contributions':contributions,
-            'instruction':'Создай полноценные исходники самостоятельного продукта и независимые unittest-тесты. Включи app.py, tests/test_product.py и нужные модули/миграции. Разрешены stdlib и библиотеки из доверенного lock: httpx, psycopg, openpyxl, pandas, fastapi, streamlit. Предпочти компактный код stdlib. service: app.py запускает HTTP на 0.0.0.0:8000, GET /health и GET /result возвращают JSON или результат; job: app.py завершается с кодом 0 и пишет /data/result.json. Не запускай сервер при импорте. Результаты файлов в /data, БД только DATABASE_URL, нет сети при тестировании. Никогда не читай окружение/файлы команды. Dockerfile/Compose/install.md будут сгенерированы платформой; не включай их в files. В operating_notes опиши реальные миграции, получение результата и backup. До 6 файлов, код до 10000 символов.'},result_role='product_solution')
+            'instruction':'Создай полноценные исходники самостоятельного продукта и независимые unittest-тесты. Включи app.py, tests/test_product.py и нужные модули/миграции. Разрешены stdlib и библиотеки из доверенного lock: httpx, psycopg, openpyxl, pandas, fastapi, streamlit. Предпочти компактный код stdlib. service: app.py запускает HTTP на 0.0.0.0:8000, GET /health и GET /result возвращают JSON или результат; job: app.py завершается с кодом 0 и пишет /data/result.json. Не запускай сервер при импорте. Результаты файлов в /data, БД только DATABASE_URL, Unit-тесты работают без сети; при needs_database=true smoke получает пустую изолированную PostgreSQL через DATABASE_URL, приложение идемпотентно инициализирует схемы. Внешняя сеть закрыта. Никогда не читай окружение/файлы команды. Dockerfile/Compose/install.md будут сгенерированы платформой; не включай их в files. В operating_notes опиши реальные миграции, получение результата и backup. До 6 файлов, код до 10000 символов.'},result_role='product_solution')
         # The application developer integrates data migrations into the final complete file set.
         for contribution in contributions.values():
             for name,content in contribution['files'].items():
@@ -75,9 +75,13 @@ def run(story_id):
         with db.connection() as conn:db.event(conn,story,'product.packaged',{'product_key':record['product_key'],'sha256':manifest['sha256']},f"{record['id']}:packaged")
         return
     if record['status']=='CHECKED':
-        qa=generate(story_id,'qa',ProductReview,{'story':story['text'],'solution':record['specification'],'checks':record['qa'],
+        # Review code once; repeated full planning/design/data documents can exhaust
+        # conservative input reservations even when actual usage is well below budget.
+        source={k:v for k,v in record['specification'].items() if k!='contributions'}
+        business=record['specification'].get('contributions',{}).get('financial_analyst',{}).get('specification','')
+        qa=generate(story_id,'qa',ProductReview,{'story':story['text'],'solution':source,'business_rules':business,'checks':record['qa'],
             'instruction':'Независимо оцени соответствие исходников критериям, адекватность тестов, экономические и граничные случаи. Реальный оператор выполнил тесты; не считай smoke достаточным для бизнес-приёмки. approved=false при ошибках или неподтверждённых требованиях.'},result_role='product_qa')
-        review=generate(story_id,'system_analyst',ProductReview,{'story':story['text'],'solution':record['specification'],'qa':qa.model_dump(),
+        review=generate(story_id,'system_analyst',ProductReview,{'story':story['text'],'solution':source,'checks':record['qa'],'qa':qa.model_dump(),
             'instruction':'Проверь архитектуру, безопасность, самостоятельность, миграции и исходники. Не одобряй при серьёзных замечаниях; GitHub review остаётся отдельным.'},result_role='product_review')
         update(record['id'],review={'qa':qa.model_dump(),'architecture':review.model_dump()},status='READY_TO_PUBLISH' if qa.approved and review.approved else 'ESCALATED')
         if not qa.approved or not review.approved:sync_status(story_id,'BLOCKED')
@@ -93,10 +97,10 @@ def run(story_id):
     if record['status']=='RELEASE_REVIEW':
         from app.delivery import broker
         release=record['git']['release']
-        gate=broker('/gate',{'pulls':[{'number':release['number'],'commit':release['commit']}]})
+        gate=broker('/gate',{'pulls':[{'number':release['number'],'commit':release['commit'],'product_package':True}]})
         if gate['eligible']:
             tagged=broker('/finalize-release',{'epic_id':release['epic_id'],'number':release['number'],
-                'commit':release['commit'],'version':record['version']})
+                'commit':release['commit'],'version':record['version'],'product_package':True})
             if tagged.get('pending'):return
             update(record['id'],git=record['git']|{'tag':tagged})
             from app.config import settings
@@ -119,7 +123,7 @@ def publish(story,record):
     from app.delivery import broker
     if record['status']!='PUBLISHED':
         readiness=broker('/ready')
-        if not readiness.get('configured') or not readiness.get('base_ready'):
+        if not readiness.get('configured') or not readiness.get('product_base_ready'):
             update(record['id'],status='WAITING_GITHUB');return
         metadata,files=inspect_package(package_bytes(record))
         tasks=[]

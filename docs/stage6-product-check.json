@@ -1,0 +1,82 @@
+{
+  "kind": "synthetic fixture; not a customer product",
+  "checks": [
+    {
+      "name": "reproducible_package",
+      "passed": true
+    },
+    {
+      "name": "portable_files",
+      "passed": true
+    },
+    {
+      "name": "real_build_unittest_and_health",
+      "passed": true
+    },
+    {
+      "name": "independent_deployment",
+      "passed": true
+    },
+    {
+      "name": "business_result_42",
+      "passed": true
+    },
+    {
+      "name": "only_product_network",
+      "passed": true
+    },
+    {
+      "name": "no_team_mounts_or_credentials",
+      "passed": true
+    },
+    {
+      "name": "runtime_limits",
+      "passed": true
+    },
+    {
+      "name": "deployment_retry_is_idempotent",
+      "passed": true
+    },
+    {
+      "name": "restart_preserves_product",
+      "passed": true
+    },
+    {
+      "name": "new_version_tests",
+      "passed": true
+    },
+    {
+      "name": "version_upgrade",
+      "passed": true
+    },
+    {
+      "name": "upgraded_result_43",
+      "passed": true
+    },
+    {
+      "name": "exported_transfer_package",
+      "passed": true
+    },
+    {
+      "name": "clean_install_by_install_md",
+      "passed": true
+    },
+    {
+      "name": "works_with_team_runtime_stopped",
+      "passed": true
+    },
+    {
+      "name": "old_volume_retained",
+      "passed": true
+    },
+    {
+      "name": "job_tests_and_result_file",
+      "passed": true
+    },
+    {
+      "name": "job_delivers_scalar",
+      "passed": true
+    }
+  ],
+  "status": "passed"
+}

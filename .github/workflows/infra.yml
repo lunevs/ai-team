@@ -20,6 +20,7 @@ jobs:
           python scripts/init_env.py
           docker compose config --quiet
           docker compose --profile observability config --quiet
+          PRODUCTS_POSTGRES_PASSWORD=ci-placeholder docker compose -f infra/products/docker-compose.yml config --quiet
           docker compose config --services
           git check-ignore .env
       - name: Validate Collector and budget rules

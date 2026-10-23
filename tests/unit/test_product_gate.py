@@ -58,3 +58,22 @@ def test_product_readiness_uses_existing_broker_contract(monkeypatch):
     monkeypatch.setattr(products,'update',lambda id,**kw:updates.append(kw))
     products.publish({'id':uuid.uuid4()},{'id':uuid.uuid4(),'status':'READY_TO_PUBLISH'})
     assert updates==[{'status':'WAITING_GITHUB'}]
+
+
+@pytest.mark.parametrize('name',['start_analytics','start_execution'])
+def test_product_story_cannot_enter_fixed_credit_workflow(monkeypatch,name):
+    from app import api,db
+    monkeypatch.setattr(api,'require_story',lambda id:{'delivery_mode':'product'})
+    with pytest.raises(db.Conflict):getattr(api,name)(uuid.uuid4(),'test')
+
+
+def test_product_requires_product_ci_in_addition_to_legacy_checks():
+    from app.git_broker import evaluate_pull
+    commit='a'*40
+    pr={'head':{'sha':commit},'merged':True,'user':{'login':'builder'}}
+    reviews=[{'state':'APPROVED','user':{'login':'reviewer'},'submitted_at':'2026-10-23','id':1}]
+    checks=[{'id':1,'name':name,'status':'completed','conclusion':'success'} for name in ['application','validate']]
+    assert evaluate_pull(pr,reviews,checks,{'total_count':0},commit)['eligible']
+    assert not evaluate_pull(pr,reviews,checks,{'total_count':0},commit,product=True)['eligible']
+    checks.append({'id':2,'name':'product-checks','status':'completed','conclusion':'success'})
+    assert evaluate_pull(pr,reviews,checks,{'total_count':0},commit,product=True)['eligible']

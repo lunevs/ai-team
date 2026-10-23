@@ -1,15 +1,18 @@
 # Bank AI Delivery Team
 
-Локальная команда AI-агентов для банковской аналитики на синтетических данных.
+Локальная команда AI-агентов для банковских решений на публичных и синтетических данных.
 Требования, роли и план: [agent_bank_mvp_spec.md](agent_bank_mvp_spec.md).
 
 ## Текущий объём
 
-Этап 0 принят: OpenProject + PostgreSQL + BookStack/MariaDB, проверки API/OpenRouter/GitHub.
-Этап 1: FastAPI, отдельный worker с LangGraph/PostgreSQL checkpoints, PM/SA и Streamlit.
-Семь unit/integration тестов и 13 e2e проверок с mock LLM прошли; реальное планирование
-OpenRouter также проверено (2 вызова, 7 832 токена, около $0,003385). Эпик реализации №41, задачи №42–45.
-SQL-исполнение и остальные исполнительные роли относятся к следующим этапам.
+Работают планирование и согласования, OpenProject/BookStack, банковский кредитный демо-сценарий,
+SQL sandbox/QA, отчёты, Git/PR gates, наблюдаемость, local/S3 storage и восстановление.
+Версия 0.7.0 добавляет самостоятельные Python-продукты: сервисы и jobs с собственными
+исходниками, тестами, Docker/Compose/install.md, реестром версий и отдельным host-оператором.
+Несколько продуктов могут использовать общую продуктовую инфраструктуру, отделённую от команды.
+Проверены 69 unit + 6 PostgreSQL tests, 19 Docker checks, полный mock и OpenRouter workflow.
+Автозапуск host-оператора требует отдельного разрешения; пока он не установлен.
+Подробности, эксплуатация и ограничения: [docs/products.md](docs/products.md).
 
 ## Запуск
 
@@ -89,7 +92,7 @@ docker compose down
 
 ## Резервные копии
 
-Пока приложение не реализовано, хранить вместе: PostgreSQL, MariaDB, volumes `opdata` и
+Для служебной инсталляции хранить вместе: PostgreSQL, MariaDB, volumes `opdata` и
 `bookstack_data`, защищённую копию `.env`. Копии содержат credentials и доступны только владельцу.
 Для согласованной копии приостановить записи в веб-сервисы и worker; использовать pg_dump
 для обеих БД (`openproject`, `ai_team`), mariadb-dump для `bookstack`, затем архивировать volumes
@@ -159,7 +162,7 @@ docker compose up -d worker
 
 ```sh
 # Unit без сети и секретов:
-docker run --rm --network none ai-team-app:0.6.0 python -m pytest -q -p no:cacheprovider tests/unit
+docker run --rm --network none ai-team-app:0.7.0 python -m pytest -q -p no:cacheprovider tests/unit
 # Integration проверяет реальный PostgreSQL. На время теста остановить worker,
 # чтобы он не забирал технические задания тестов из той же локальной очереди:
 docker compose stop worker
@@ -304,4 +307,20 @@ python3 scripts/cleanup_stage5_checks.py --remove-volumes
 
 ## Границы текущей реализации
 
-Этапы 0–5 дают проверенный кредитный демонстрационный сценарий и служебную инфраструктуру AI-команды. Целевая модель шире: команда должна создавать отдельно поставляемые продукты с собственными Docker/Compose/install.md, разворачивать их в изолированной продуктовой среде и выдавать результат в формате user story. Этот контур пока не реализован; декларативный dashboard.py не является самостоятельным развёрнутым приложением. Подробности и критерии отделимости — раздел 28 agent_bank_mvp_spec.md и docs/acceptance.md.
+Этапы 0–5 — проверенный кредитный демонстрационный сценарий. Этап 6 добавляет
+генерацию и независимую поставку Python service/job по user story; установка и работа
+при выключенном runtime команды проверены. Реальный OpenRouter сгенерировал работающее
+приложение: 8 calls, 29 654 tokens, $0.010684782, отдельные QA/architecture review.
+Независимые GitHub review/CI/merge и пользовательская приёмка сохраняются; полного выпуска
+нового бизнес-продукта в main этим техническим тестом не выполняли.
+
+Внешние BI-коннекторы, другие языки, доступ к внешним источникам и автоматический откат
+произвольных DB-миграций требуют конкретных продуктовых требований и проверок. Данные ЦБ
+не загружались; проектирование хранилища остаётся будущей user story.
+
+Для сборки/запуска оператор работает **на Docker-host**, не внутри worker:
+`python3 scripts/product_operator.py --once` либо `--watch`. Установка постоянного
+пользовательского LaunchAgent: `python3 scripts/install_product_operator.py install`;
+требуется явное разрешение владельца. Предпросмотр без установки: команда `preview`,
+проверка: `status`, удаление сервиса с сохранением продуктов/данных: `uninstall`.
+Служебный backup команды не заменяет backup продуктовых volumes/БД/credentials.

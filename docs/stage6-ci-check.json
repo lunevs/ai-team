@@ -1,0 +1,9 @@
+{
+  "status": "passed",
+  "checks": [
+    "repository manifest validation",
+    "CI entry point builds trusted Dockerfile",
+    "offline unittest and HTTP smoke",
+    "no team service/secret dependency"
+  ]
+}

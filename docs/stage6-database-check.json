@@ -1,0 +1,8 @@
+{
+  "kind": "empty isolated database/role check; no data loaded",
+  "checks": [
+    "p-6e0000000002: no admin rights, empty own database, other database rejected",
+    "p-6e0000000003: no admin rights, empty own database, other database rejected"
+  ],
+  "status": "passed"
+}
