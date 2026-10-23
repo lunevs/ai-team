@@ -24,7 +24,12 @@ def build_graph(saver):
         ensure_main(id)
         sync_status(id,'ANALYSIS')
         story=db.active(id)
-        result=generate(id,'pm',PMResult,{'story':story['text'],'answers':story['answers'],'demo_defaults':METRICS,'model_contract':MODEL_CONTRACT,'dataset':{'version':VERSION,'seed':SEED,'months':'2026-01..2026-06','synthetic_only':True},'instruction':'Определи цель, критерии и приоритеты. Для фиксированной демонстрации используй переданный паспорт и набор; при противоречии истории задай вопрос. Не запрашивай заново уже заданные определения. Задавай вопросы только при невозможности подготовить однозначный план.'})
+        context={'story':story['text'],'answers':story['answers'],'delivery_mode':story['delivery_mode']}
+        if story['delivery_mode']=='product':
+            context|={'instruction':'Определи цель, критерии и формат результата самостоятельного продукта. Не подставляй кредитное демо. Только публичные/синтетические данные, отдельный продуктовый контур, возможна общая инфраструктура продуктов. Уточни отсутствующие бизнес-требования до реализации; не загружай данные, если это не поручено. Текущий профиль реализации: Python 3.12 с доверенными зависимостями, сервис HTTP или job; иных профилей пока нет.'}
+        else:
+            context|={'demo_defaults':METRICS,'model_contract':MODEL_CONTRACT,'dataset':{'version':VERSION,'seed':SEED,'months':'2026-01..2026-06','synthetic_only':True},'instruction':'Определи цель, критерии и приоритеты. Используй переданный демонстрационный паспорт; при противоречии истории задай вопрос.'}
+        result=generate(id,'pm',PMResult,context)
         with db.connection() as conn:
             row=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(id,)).fetchone()
             if row['status']=='CANCELLED': raise db.Cancelled()
@@ -38,6 +43,10 @@ def build_graph(saver):
     def sa_node(state):
         story=db.active(state['story_id'])
         tracker.honor_remote_stop(story['id'])
+        if story['delivery_mode']=='product':
+            result=generate(story['id'],'system_analyst',SAResult,{'story':story['text'],'answers':story['answers'],'product':state['pm'],'delivery_mode':'product',
+                'instruction':'Архитектура самостоятельного Python-продукта. Один эпик с шестью задачами: financial_analyst, designer, data_developer, application_developer, qa, system_analyst (ревью). Уникальные ключи, ацикличные зависимости. Исходники и тесты в отдельном продуктовом пакете с Docker/Compose/install.md; runtime независим от команды. Общая продуктовая инфраструктура разрешена, данные и роли отделены от служебной БД команды. Системный аналитик назначает исполнителей. До 1200 символов архитектуры; краткие критерии.'})
+            return {'plan':result.model_dump(mode='json')}
         result=generate(story['id'],'system_analyst',SAResult,{'story':story['text'],'answers':story['answers'],'product':state['pm'],'instruction':'Подготовь архитектуру и эпики с задачами, критериями, зависимостями и исполнителями. Не исполняй код. Ключи задач уникальны, зависимости ацикличны. Ограничь ответ: 1–2 эпика, ровно 4 задачи, максимум 2 коротких критерия на задачу; архитектура до 1200 символов. Не добавляй SQL или подробные скрипты.'})
         return {'plan':result.model_dump(mode='json')}
 
@@ -98,6 +107,10 @@ def run_story(story_id,saver):
     if get_run(story_id):
         run_analytics(story_id,saver)
         return
+    if story['delivery_mode']=='product' and story['approved']:
+        from app.products import run
+        run(story_id)
+        return
     graph=build_graph(saver)
     config={'configurable':{'thread_id':f'{story_id}:{story["revision"]}'},'recursion_limit':30}
     snapshot=graph.get_state(config)
@@ -112,3 +125,7 @@ def run_story(story_id,saver):
             graph.invoke({'story_id':str(story_id)},config)
     else:
         graph.invoke({'story_id':str(story_id)},config)
+    current=db.get_story(story_id)
+    if current['delivery_mode']=='product' and current['approved']:
+        from app.products import run
+        run(story_id)

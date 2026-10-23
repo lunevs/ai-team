@@ -16,6 +16,7 @@ class StrictModel(BaseModel):
 
 class StoryInput(StrictModel):
     text: str = Field(min_length=20, max_length=8000)
+    delivery_mode: Literal['credit_demo','product'] = 'credit_demo'
     synthetic_only: Literal[True]
     max_calls: int = Field(default=8, ge=1, le=8)
     max_tokens: int = Field(default=60000, ge=100, le=60000)
