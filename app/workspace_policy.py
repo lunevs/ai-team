@@ -35,7 +35,7 @@ def apply_action(files,role,action):
                 if action.content in line:hits.append({'path':path,'line':number,'text':line[:200]})
                 if len(hits)>=30:return files,{'matches':hits,'truncated':True},None
         return files,{'matches':hits},None
-    if action.operation in ['check','finish']:return files,{'summary':action.summary},action.operation
+    if action.operation in ['check','finish']:return files,{'summary':action.summary},'continue' if action.operation=='check' else 'finish'
     path=safe_path(action.path)
     if action.operation=='read':
         if path not in files:raise ValueError('File not found')

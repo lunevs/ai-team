@@ -144,7 +144,8 @@ def advance(story):
         files={root+'workspace.json':json.dumps(manifest,sort_keys=True,ensure_ascii=False).encode()}
         files.update({root+'source/'+p:t.encode() for p,t in active['files'].items()})
         page=knowledge.ensure_page(story['id'],f"r{story['revision']}:workspace-task:{active['task_key']}",active['specification']['title'],
-            '# Результат задачи\n\n'+active['summary']+'\n\nИсходники: '+manifest['source_digest']+'\n\nФактические проверки:\n```json\n'+json.dumps(active['checks'],ensure_ascii=False)+'\n```')
+            '# Результат задачи\n\n'+active['summary']+'\n\nИсходники: '+manifest['source_digest']+'\n\nФактические проверки:\n```json\n'+json.dumps(active['checks'],ensure_ascii=False)+'\n```'+\
+            ''.join('\n\n## '+path+'\n\n'+text for path,text in active['files'].items() if path.startswith('docs/') and workspace['files'].get(path)!=text))
         result=broker('/publish',{'run_id':str(active['id']),'story_id':str(story['id']),'revision':story['revision'],'workspace_task':True,
             'previous_release':workspace['git'].get('previous_release'),'documentation_url':page,
             'tasks':[{'task_id':active['task_id'],'epic_id':active['epic_id'],'role':active['role'],'files':{p:base64.b64encode(b).decode() for p,b in files.items()}}]})['pulls'][0]

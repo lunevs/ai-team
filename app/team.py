@@ -146,7 +146,7 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
             elif role=='pm':card['current']='Ждёт подготовки среды для планирования'
             else:card['current']='Ждёт выполнимого плана'
     workspace=story.get('workspace') or {}
-    if workspace and not stopped:
+    if workspace and not stopped and any(row['state']!='MERGED' for row in workspace['tasks']):
         rows=workspace['tasks'];by_key={row['task_key']:row for row in rows}
         titles={task['key']:task['title'] for task in planned}
         epics=(story.get('plan') or {}).get('epics',[])

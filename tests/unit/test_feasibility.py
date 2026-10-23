@@ -40,7 +40,9 @@ def test_incomplete_or_unknown_assessment_never_allows_approval(mutation):
 
 def test_two_epics_cannot_silently_pass_current_profile():
     story,pm,plan,a=inputs();plan['epics'].append({'key':'two','tasks':[]})
-    assert 'multi_epic' in {g['capability'] for g in evaluate(story,pm,plan,a)['gaps']}
+    assert evaluate(story,pm,plan,a)['status']=='READY'
+    plan['epics']*=7
+    assert evaluate(story,pm,plan,a)['status']=='NEEDS_ANALYSIS'
 
 
 def test_approval_requires_exact_plan_and_registry_version(monkeypatch):
