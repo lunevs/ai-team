@@ -17,9 +17,21 @@ class State(TypedDict,total=False):
     plan:dict
     documentation_url:str
     approved:bool
+    feasibility_blocked:bool
 
 
 def build_graph(saver):
+    def preflight_node(state):
+        story=db.active(state['story_id'])
+        if story['delivery_mode']=='product':
+            from app.feasibility import precheck
+            ensure_main(story['id'])
+            report=precheck(story)
+            if report:
+                sync_status(story['id'],'BLOCKED')
+                return {'feasibility_blocked':True,'documentation_url':report['documentation_url']}
+        return {'feasibility_blocked':False}
+
     def pm_node(state):
         id=state['story_id']
         ensure_main(id)
@@ -27,7 +39,7 @@ def build_graph(saver):
         story=db.active(id)
         context={'story':story['text'],'answers':story['answers'],'delivery_mode':story['delivery_mode']}
         if story['delivery_mode']=='product':
-            context|={'capabilities':registry(),'technical_policy':'Отсутствие технической возможности — работа команды по расширению платформы. Не задавай заказчику вопросы о доступности инструментов и не исключай требование из критериев из-за отсутствия инструмента.', 'instruction':'Определи цель, критерии, приоритеты и формат результата самостоятельного продукта. Всегда заполни goal (не менее 5 символов), acceptance_criteria и priorities (непустые списки), questions (список). Если нужны уточнения, всё равно верни предварительную цель, критерии и приоритеты; вопросы помести только в questions. Не подставляй кредитное демо. Только публичные/синтетические данные, отдельный продуктовый контур, возможна общая инфраструктура продуктов. Уточни отсутствующие бизнес-требования до реализации; не загружай данные, если это не поручено. Текущий профиль реализации: Python 3.12 с доверенными зависимостями, сервис HTTP или job; иных профилей пока нет.'}
+            context|={'capabilities':registry(),'technical_policy':'Не добавляй новые бизнес-требования и не спрашивай заказчика о выборе имён полей /health, ответа 404 и внутренних средств реализации: это решения команды. Отсутствие технической возможности — работа команды по расширению платформы. Не задавай заказчику вопросы о доступности инструментов и не исключай требование из критериев из-за отсутствия инструмента.', 'instruction':'Определи цель, критерии, приоритеты и формат результата самостоятельного продукта. Всегда заполни goal (не менее 5 символов), acceptance_criteria и priorities (непустые списки), questions (список). Если нужны уточнения, всё равно верни предварительную цель, критерии и приоритеты; вопросы помести только в questions. Не подставляй кредитное демо. Только публичные/синтетические данные, отдельный продуктовый контур, возможна общая инфраструктура продуктов. Уточни отсутствующие бизнес-требования до реализации; не загружай данные, если это не поручено. Текущий профиль реализации: Python 3.12 с доверенными зависимостями, сервис HTTP или job; иных профилей пока нет.'}
         else:
             context|={'demo_defaults':METRICS,'model_contract':MODEL_CONTRACT,'dataset':{'version':VERSION,'seed':SEED,'months':'2026-01..2026-06','synthetic_only':True},'instruction':'Определи цель, критерии и приоритеты. Используй переданный демонстрационный паспорт; при противоречии истории задай вопрос.'}
         result=generate(id,'pm',PMResult,context)
@@ -90,9 +102,10 @@ def build_graph(saver):
         return {}
 
     graph=StateGraph(State)
-    for name,node in [('pm',pm_node),('blocked',blocked_node),('system_analyst',sa_node),('publish',publish_node),('approval',approval_node),('accepted',accepted_node)]:
+    for name,node in [('preflight',preflight_node),('pm',pm_node),('blocked',blocked_node),('system_analyst',sa_node),('publish',publish_node),('approval',approval_node),('accepted',accepted_node)]:
         graph.add_node(name,node)
-    graph.add_edge(START,'pm')
+    graph.add_edge(START,'preflight')
+    graph.add_conditional_edges('preflight',lambda state:END if state.get('feasibility_blocked') else 'pm')
     graph.add_conditional_edges('pm',lambda state:'blocked' if state['pm']['questions'] else 'system_analyst')
     graph.add_edge('blocked',END)
     graph.add_edge('system_analyst','publish')

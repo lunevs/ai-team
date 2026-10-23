@@ -1,0 +1,43 @@
+{
+  "backend": "openrouter",
+  "database": "disposable empty PostgreSQL",
+  "checks": [
+    "authenticated_profile_reports_missing_airflow_and_network",
+    "supported_plan_reaches_customer_review",
+    "every_criterion_has_tasks_roles_and_verification",
+    "unsupported_plan_blocked_before_approval",
+    "technical_gaps_are_not_customer_questions",
+    "airflow_schedule_and_network_are_reported",
+    "technical_tasks_and_documentation_created",
+    "unsupported_approval_rejected",
+    "stale_registry_approval_rejected",
+    "checkpoint_replay_keeps_report_links_and_usage",
+    "recheck_preserves_inputs_and_increments_revision",
+    "new_revision_rechecks_and_stays_honest"
+  ],
+  "stories": [
+    "b1a24855-7223-4efa-9cd0-7336fe1b1fbf",
+    "8035e63e-0ada-4c59-8fd3-2a50f5e3b2df"
+  ],
+  "supported_usage": {
+    "calls": 3,
+    "tokens": 11361,
+    "estimated_cost_usd": 0.00492585,
+    "estimated_calls": 0,
+    "backends": [
+      "openrouter"
+    ],
+    "models": [
+      "deepseek/deepseek-v4.1-flash"
+    ]
+  },
+  "unsupported_usage": {
+    "calls": 0,
+    "tokens": 0,
+    "estimated_cost_usd": 0.0,
+    "estimated_calls": 0,
+    "backends": [],
+    "models": []
+  },
+  "no_external_source_requests": true
+}

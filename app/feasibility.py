@@ -19,6 +19,7 @@ class CriterionCheck(StrictModel):
 class PlanAssessment(StrictModel):
     criteria: list[CriterionCheck] = Field(min_length=1, max_length=12)
     unknown_requirements: list[str] = Field(default_factory=list, max_length=12)
+    technical_decisions: list[str] = Field(default_factory=list, max_length=12)
 
 
 def plan_digest(pm, plan):
@@ -68,7 +69,7 @@ def evaluate(story, pm, plan, assessment):
     issues.extend(assessment.unknown_requirements)
     status='NEEDS_PLATFORM' if gaps else 'NEEDS_ANALYSIS' if issues else 'READY'
     return {'status':status,'registry_digest':profile['digest'],'registry_version':profile['version'],
-            'plan_digest':plan_digest(pm,plan),'criteria':rows,'gaps':gaps,'analysis_issues':issues,
+            'plan_digest':plan_digest(pm,plan),'criteria':rows,'gaps':gaps,'analysis_issues':issues,'technical_decisions':assessment.technical_decisions,
             'scope':'Техническая выполнимость предварительного плана; результат ещё не реализован и не проверен.'}
 
 
@@ -105,6 +106,7 @@ def publish(story,report):
     for row in report['criteria']:
         text+=f"## Критерий {row['criterion_index']+1}: {row['criterion']}\nЗадачи: {', '.join(row['task_keys'])}\nИсполнители: {', '.join(row['roles'])}\nПроверка: {row['verification']}\n\n"
     for gap in report['gaps']:text+='## Требуется подготовить: '+gap['title']+'\n'+gap['reason']+'\n\n'
+    if report.get('technical_decisions'):text+='## Технические решения команды\n'+'\n'.join('- '+x for x in report['technical_decisions'])+'\n\n'
     if report['analysis_issues']:text+='## Требует разбора аналитика\n'+'\n'.join('- '+x for x in report['analysis_issues'])
     key=f"r{story['revision']}:feasibility:{report['registry_digest'][:12]}:{report['plan_digest'][:12]}"
     page=knowledge.ensure_page(story['id'],key,'Возможности, препятствия и проверка критериев',text)
@@ -128,10 +130,29 @@ def assess(story,pm,plan):
     else:
         result=generate(story['id'],'system_analyst',PlanAssessment,
             {'story':story['text'],'answers':story['answers'],'product':pm,'plan':plan,'capabilities':profile,
-             'instruction':'Проверь техническую выполнимость всех требований, включая ответы заказчика. Для каждого acceptance_criteria верни ровно одну строку с его индексом (от 0), существующими ключами задач, нужными capability_ids из реестра и конкретным способом независимой проверки. Не скрывай неподдерживаемые возможности и не заменяй требование заглушкой. Неизвестные технические предпосылки укажи в unknown_requirements; это работа аналитика, не вопросы заказчику. Статус поддержки определяет платформа, не модель. Небольшой профиль не подходит для большого проекта через одну генерацию.'},
+             'instruction':'Проверь техническую выполнимость всех требований, включая ответы заказчика. Для каждого acceptance_criteria верни ровно одну строку с его индексом (от 0), существующими ключами задач, нужными capability_ids из реестра и конкретным способом независимой проверки. capability_ids содержит только положительно требуемые возможности. Критерий «без БД/сети/расписания/Airflow» НЕ требует product_postgres/external_http/scheduled_jobs/airflow: для выполнения такого запрета достаточно python_service или python_job. Не добавляй отсутствующую возможность только потому, что она перечислена в реестре. Не скрывай неподдерживаемые возможности и не заменяй требование заглушкой. unknown_requirements — только действительно неизвестные внешние условия, без которых исполнение невозможно; для каждого объясни, почему его нельзя решить в имеющейся задаче. Выбор формата health/404, имён файлов/таблиц, stdlib HTTP-сервера и других деталей реализации НЕ является препятствием: аналитик принимает решение, записывает в technical_decisions, разработчик реализует. Доверенный base_image и правила упаковки уже заданы в реестре; их не нужно согласовывать. Задача define_contract или её аналог может уточнить технический контракт без блокировки плана. Это работа команды, не вопросы заказчику. Статус поддержки определяет платформа, не модель. Небольшой профиль не подходит для большого проекта через одну генерацию.'},
             result_role='feasibility_'+profile['digest'][:12]+'_'+digest[:12])
         report=evaluate(story,pm,plan,result)
         save(story,report)
     # Retry external publication after a crash without losing the assessment.
     report=publish(story,report);save(story,report)
+    return report
+
+
+def precheck(story):
+    """Explicit missing prerequisites are team work, before any customer questions."""
+    profile=registry()
+    required=explicit_capabilities(story['text']+'\n'+story.get('answers',''))
+    gaps=[{'capability':key,'title':profile['capabilities'][key]['name'],
+           'reason':profile['capabilities'][key]['detail'],'owner':'system_analyst'}
+          for key in sorted(required) if not profile['capabilities'][key]['supported']]
+    if not gaps:return None
+    digest=hashlib.sha256((story['text']+'\n'+story.get('answers','')).encode()).hexdigest()
+    previous=get(story['id'],story['revision'])
+    report=previous if previous and previous['registry_digest']==profile['digest'] and previous['plan_digest']==digest else {
+        'status':'NEEDS_PLATFORM','source':'explicit_requirement_precheck','registry_digest':profile['digest'],
+        'registry_version':profile['version'],'plan_digest':digest,'criteria':[],'gaps':gaps,
+        'analysis_issues':[],'technical_decisions':[],
+        'scope':'Явно запрошены недоступные возможности. Полная матрица критериев и план появятся после подготовки среды; заказчику не задаются технические вопросы.'}
+    save(story,report);report=publish(story,report);save(story,report)
     return report

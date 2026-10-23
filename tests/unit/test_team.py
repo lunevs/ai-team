@@ -98,3 +98,16 @@ def test_product_escalation_keeps_personal_results_and_explains_rework():
     assert cards['financial_analyst']['current']=='Описание показателей подготовлено'
     assert cards['application_developer']['current']=='Приложение требует доработки после проверки'
     assert cards['qa']['current']=='Проверка завершена; ждёт исправлений'
+
+
+def test_feasibility_tasks_are_visible_on_analyst_card():
+    story={'revision':1,'status':'BLOCKED','delivery_mode':'product','feasibility':{
+        'status':'NEEDS_PLATFORM','gaps':[{'capability':'airflow','title':'Загрузки Airflow'}],
+        'tasks':[{'capability':'airflow','task_id':123,'url':'/123'}]}}
+    remote={123:{'_embedded':{'status':{'name':'New','isClosed':False}}}}
+    cards={a['role']:a for a in project_team(story,[],{},[],[],remote,True,False)['agents']}
+    assert cards['system_analyst']['remaining']==1
+    assert cards['system_analyst']['current']=='Нужно подготовить: Загрузки Airflow'
+    assert cards['system_analyst']['next_task']=='Загрузки Airflow'
+    assert cards['pm']['current']=='Ждёт подготовки среды для планирования'
+    assert cards['qa']['current']=='Ждёт выполнимого плана'
