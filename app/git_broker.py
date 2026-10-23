@@ -32,13 +32,17 @@ class Publish(BaseModel):
     documentation_url:str=Field(max_length=1000)
     tasks:list[TaskBundle]=Field(min_length=1,max_length=30)
     product_package:bool=False
+    workspace_task:bool=False
+    workspace_delivery:bool=False
+    previous_release:dict|None=None
 
 class Pulls(BaseModel):
     model_config=ConfigDict(extra='forbid')
-    pulls:list[dict]=Field(min_length=1,max_length=30)
+    pulls:list[dict]=Field(min_length=1,max_length=600)
 
 class Release(Pulls):
     epic_id:int=Field(ge=1)
+    milestone:bool=False
 
 class Finalize(BaseModel):
     model_config=ConfigDict(extra='forbid')
@@ -47,6 +51,7 @@ class Finalize(BaseModel):
     commit:str=Field(pattern=r'^[0-9a-f]{40}$')
     version:str=Field(default='0.4.0',pattern=r'^[0-9]+\.[0-9]+\.[0-9]+$')
     product_package:bool=False
+    workspace_task:bool=False
 
 
 def auth(value):
@@ -92,7 +97,10 @@ def ensure_pr(head,base,title,body):
 
 def publish_task(data,task,base_sha):
     if not task.files:raise HTTPException(422,'Empty bundle')
-    if data.product_package:
+    if data.workspace_task:
+        root='workspaces/p-'+data.story_id.hex[:12]+'/'
+        if not all(p.startswith(root) and (p==root+'workspace.json' or p.startswith(root+'source/')) for p in task.files):raise HTTPException(422,'Workspace path outside task product')
+    elif data.product_package:
         from app.product_contract import safe_path,RESERVED
         for name in task.files:
             parts=name.split('/')
@@ -119,6 +127,16 @@ def publish_task(data,task,base_sha):
         total+=len(content)
         if total>2_000_000:raise HTTPException(422,'Bundle too large')
         blobs[name]=content
+    if data.workspace_task:
+        from app.workspace_policy import inspect_snapshot
+        archive=io.BytesIO()
+        with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
+            for name,content in blobs.items():z.writestr(name[len(root):],content)
+        try:
+            metadata,_=inspect_snapshot(archive.getvalue())
+            if (metadata['story_id'],metadata['revision'],metadata['task_id'],metadata['epic_id'],metadata['role'],metadata['task_run_id'])!=(str(data.story_id),data.revision,task.task_id,task.epic_id,task.role,str(data.run_id)):
+                raise ValueError('Task identity mismatch')
+        except (ValueError,KeyError,TypeError):raise HTTPException(422,'Workspace snapshot rejected') from None
     if data.product_package and task.role=='application_developer':
         from app.product_contract import inspect_package
         output=io.BytesIO()
@@ -159,9 +177,15 @@ def publish_task(data,task,base_sha):
             local.parent.mkdir(parents=True,exist_ok=True)
             local.write_bytes(content)
             blob=github(REPO+'/git/blobs','POST',{'encoding':'base64','content':base64.b64encode(content).decode()})
-            tree.append({'path':name if data.product_package else f'deliveries/{data.story_id}/r{data.revision}/task-{task.task_id}/{name}',
+            tree.append({'path':name if data.product_package or data.workspace_task else f'deliveries/{data.story_id}/r{data.revision}/task-{task.task_id}/{name}',
                          'mode':'100644','type':'blob','sha':blob['sha']})
         parent=github(REPO+'/git/commits/'+release_sha)
+        if data.workspace_task:
+            old_tree=github(REPO+'/git/trees/'+parent['tree']['sha']+'?recursive=1')
+            if old_tree.get('truncated'):raise HTTPException(409,'Repository tree truncated')
+            for item in old_tree['tree']:
+                if item['type']=='blob' and item['path'].startswith(root+'source/') and item['path'] not in blobs:
+                    tree.append({'path':item['path'],'mode':'100644','type':'blob','sha':None})
         created_tree=github(REPO+'/git/trees','POST',{'base_tree':parent['tree']['sha'],'tree':tree})
         commit=github(REPO+'/git/commits','POST',{'message':marker,'tree':created_tree['sha'],'parents':[release_sha]})
         sha=commit['sha']
@@ -172,10 +196,10 @@ def publish_task(data,task,base_sha):
     pr=ensure_pr(branch,release,f'Задача #{task.task_id}: {task.role}',
         f'Результат исполнения истории {data.story_id}, ревизия {data.revision}.\n\n'
         f'Задача: http://localhost:8080/work_packages/{task.task_id}\nДокументация: {data.documentation_url}\n\n'+
-        ('Продукт проверен изолированным оператором; отчёт тестов и LLM-review приложены. ' if data.product_package else 'SQL проверен sandbox и независимым QA. LLM-review аналитика приложено как артефакт. ')+ 'LLM-review не заменяет независимое GitHub-review. '
+        ('Изменения задачи проверены изолированным оператором; бизнес-приёмка ещё предстоит. ' if data.workspace_task else 'Продукт проверен изолированным оператором; отчёт тестов и LLM-review приложены. ' if data.product_package else 'SQL проверен sandbox и независимым QA. LLM-review аналитика приложено как артефакт. ')+ 'LLM-review не заменяет независимое GitHub-review. '
         'Автор PR не может одобрить собственный PR. Автослияние отключено.\n\n'+marker)
     return {'task_id':task.task_id,'epic_id':task.epic_id,'branch':branch,'release_branch':release,
-            'product_package':data.product_package,'commit':sha,'pull_request_url':pr['html_url'],'number':pr['number'],'author':pr['user']['login']}
+            'product_package':data.product_package,'workspace_task':data.workspace_task or data.workspace_delivery,'commit':sha,'pull_request_url':pr['html_url'],'number':pr['number'],'author':pr['user']['login']}
 
 @app.get('/health')
 def health():return {'status':'ok'}
@@ -196,7 +220,14 @@ def ready(authorization:str=Header(default='')):
         product_valid=product_contract is not None and json.loads(base64.b64decode(product_contract['content']))=={
             'version':1,'profile':'python-locked-v1','required_check':'product-checks'}
     except (KeyError,ValueError,TypeError):product_valid=False
+    workspace_ref=os.getenv('GITHUB_WORKSPACE_BASE_REF','release/370')
+    workspace=github(REPO+'/git/ref/heads/'+workspace_ref,missing=True)
+    workspace_sha=workspace['object']['sha'] if workspace else None
+    contract=github(REPO+'/contents/app/workspace_runtime_contract.json?ref='+workspace_sha,missing=True) if workspace_sha else None
+    try:workspace_valid=contract is not None and json.loads(base64.b64decode(contract['content']))=={'version':1,'required_check':'workspace-checks','profile':'python-locked-v1'}
+    except (ValueError,KeyError,TypeError):workspace_valid=False
     return {'configured':True,'base_sha':result['object']['sha'],'base_ready':valid,
+        'workspace_base_sha':workspace_sha,'workspace_base_ready':workspace_valid,'workspace_base_ref':workspace_ref,
         'product_base_sha':product_sha,'product_base_ready':product_valid,'product_base_ref':product_ref}
 
 @app.post('/publish')
@@ -204,15 +235,22 @@ def publish(data:Publish,authorization:str=Header(default='')):
     auth(authorization)
     if len({t.task_id for t in data.tasks})!=len(data.tasks):raise HTTPException(422,'Duplicate task')
     readiness=ready(authorization)
-    field='product_base_ready' if data.product_package else 'base_ready'
+    if data.workspace_task and data.product_package:raise HTTPException(422,'Ambiguous publication profile')
+    field='workspace_base_ready' if data.workspace_task or data.workspace_delivery else 'product_base_ready' if data.product_package else 'base_ready'
     if not readiness.get(field):raise HTTPException(409,'Merge the matching runtime implementation and product CI before publication')
-    base=readiness['product_base_sha'] if data.product_package else readiness['base_sha']
+    base=readiness['workspace_base_sha'] if data.workspace_task or data.workspace_delivery else readiness['product_base_sha'] if data.product_package else readiness['base_sha']
+    if data.previous_release:
+        prior=data.previous_release
+        if not gate(Pulls(pulls=[prior|{'workspace_task':True}]),authorization)['eligible']:raise HTTPException(409,'Previous epic release is not verified')
+        pr=github(REPO+'/pulls/'+str(int(prior['number'])))
+        if pr['base']['ref']!='main' or pr['head']['ref']!='release/'+str(prior['epic_id']):raise HTTPException(409,'Previous release identity mismatch')
+        base=pr['merge_commit_sha']
     # Stable refs and markers reconcile partial publication after process/network failures.
     return {'pulls':[publish_task(data,task,base) for task in data.tasks],'independent_review_required':True,
-            'base_ref':readiness['product_base_ref'] if data.product_package else os.getenv('GITHUB_BASE_REF','release/188'),'base_commit':base}
+            'base_ref':readiness['workspace_base_ref'] if data.workspace_task or data.workspace_delivery else readiness['product_base_ref'] if data.product_package else os.getenv('GITHUB_BASE_REF','release/188'),'base_commit':base}
 
 
-def evaluate_pull(pr,reviews,checks,statuses,expected_commit,product=False):
+def evaluate_pull(pr,reviews,checks,statuses,expected_commit,product=False,workspace=False):
     reasons=[]
     if pr['head']['sha']!=expected_commit:reasons.append('PR changed after QA')
     if not pr.get('merged'):reasons.append('PR not merged')
@@ -228,6 +266,7 @@ def evaluate_pull(pr,reviews,checks,statuses,expected_commit,product=False):
         if check['name'] not in latest_checks or check.get('id',0)>latest_checks[check['name']].get('id',0):latest_checks[check['name']]=check
     required=[v for v in os.getenv('GITHUB_REQUIRED_CHECKS','application,validate').split(',') if v]
     if product:required.append('product-checks')
+    if workspace:required.append('workspace-checks')
     if any(name not in latest_checks or latest_checks[name]['status']!='completed' or latest_checks[name].get('conclusion')!='success' for name in required):reasons.append('Required CI checks not successful')
     if not latest_checks:reasons.append('No CI checks')
     elif any(c['status']!='completed' or c.get('conclusion') not in ['success','neutral','skipped'] for c in latest_checks.values()):reasons.append('CI not successful')
@@ -244,7 +283,7 @@ def gate(data:Pulls,authorization:str=Header(default='')):
         reviews=github(REPO+f'/pulls/{number}/reviews?per_page=100')
         checks=github(REPO+f'/commits/{expected}/check-runs?per_page=100')['check_runs']
         statuses=github(REPO+f'/commits/{expected}/status')
-        results.append({'number':number,**evaluate_pull(pr,reviews,checks,statuses,expected,bool(item.get('product_package')))})
+        results.append({'number':number,**evaluate_pull(pr,reviews,checks,statuses,expected,bool(item.get('product_package')),bool(item.get('workspace_task')))})
     return {'eligible':all(r['eligible'] for r in results),'pulls':results}
 
 @app.post('/release')
@@ -256,17 +295,17 @@ def release(data:Release,authorization:str=Header(default='')):
         pr=github(REPO+'/pulls/'+str(int(item['number'])))
         if pr['base']['ref']!=branch:raise HTTPException(409,'Task PR belongs to another epic')
     pr=ensure_pr(branch,'main',f'Релиз эпика #{data.epic_id}',
-        'Результат принят заказчиком после независимого ревью task PR, успешного CI и их слияния. '
+        ('Промежуточный технический релиз: задачи проверены и слиты; приёмка всего продукта ещё предстоит. ' if data.milestone else 'Результат принят заказчиком после независимого ревью task PR, успешного CI и их слияния. ')+
         'Выпуск в main требует отдельного независимого review, CI и ручного слияния. Автослияние отключено.')
     return {'epic_id':data.epic_id,'number':pr['number'],'commit':pr['head']['sha'],
-            'pull_request_url':pr['html_url'],'release_branch':branch,'product_package':any(p.get('product_package') for p in data.pulls)}
+            'pull_request_url':pr['html_url'],'release_branch':branch,'product_package':any(p.get('product_package') for p in data.pulls),'workspace_task':any(p.get('workspace_task') for p in data.pulls)}
 
 @app.post('/finalize-release')
 def finalize_release(data:Finalize,authorization:str=Header(default='')):
     auth(authorization)
     pr=github(REPO+'/pulls/'+str(data.number))
     if pr['base']['ref']!='main' or pr['head']['ref']!='release/'+str(data.epic_id):raise HTTPException(409,'Release PR does not match epic')
-    if not gate(Pulls(pulls=[{'number':data.number,'commit':data.commit,'product_package':data.product_package}]),authorization)['eligible']:
+    if not gate(Pulls(pulls=[{'number':data.number,'commit':data.commit,'product_package':data.product_package,'workspace_task':data.workspace_task}]),authorization)['eligible']:
         raise HTTPException(409,'Release review/CI/merge gate incomplete')
     merge=pr.get('merge_commit_sha')
     if not merge or not re.fullmatch('[0-9a-f]{40}',merge):raise HTTPException(409,'Merge commit missing')

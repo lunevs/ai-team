@@ -58,9 +58,9 @@ ids = {}; tokens = {}
   end
 end
 statuses = {}
-%w[NEW ANALYSIS PLAN_REVIEW IN_PROGRESS BLOCKED FAILED CANCELLED].each do |name|
+%w[NEW ANALYSIS PLAN_REVIEW IN_PROGRESS BLOCKED FAILED CANCELLED DONE].each do |name|
   status = Status.where('lower(name) = ?', name.downcase).first
-  status ||= Status.create!(name: name, is_closed: name == 'CANCELLED', position: Status.maximum(:position).to_i + 1)
+  status ||= Status.create!(name: name, is_closed: %w[CANCELLED DONE].include?(name), position: Status.maximum(:position).to_i + 1)
   statuses[name] = status.id
 end
 ([Status.find(1)] + Status.where(id: statuses.values)).each do |source|

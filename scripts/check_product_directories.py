@@ -17,7 +17,7 @@ def main():
         if root.is_symlink() or manifest.is_symlink():raise ValueError('Linked product directory')
         metadata=json.loads(manifest.read_text())
         names=set(metadata['files'])|{'product.json'}
-        if len(names)>50:raise ValueError('Too many product files')
+        if len(names)>300:raise ValueError('Too many product files')
         output=io.BytesIO();total=0
         with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as archive:
             for name in sorted(names):

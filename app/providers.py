@@ -22,7 +22,7 @@ class InvalidModelOutput(Exception):
         self.issues=issues or []
 
 def completion_limit(schema):
-    return settings.completion_tokens*2 if schema is AnalyticsResult or schema.__name__=='ProductSolution' else settings.completion_tokens
+    return settings.completion_tokens*2 if schema is AnalyticsResult or schema.__name__ in ['ProductSolution','WorkspaceAction','SAResult'] else settings.completion_tokens
 class RetryableProviderError(Exception): pass
 
 class OpenRouterProvider:
@@ -85,9 +85,18 @@ class MockProvider:
         context=json.loads(prompt)
         from app.product_contract import Contribution,ProductSolution,ProductReview
         from app.feasibility import PlanAssessment,CriterionCheck
+        from app.workspace_contract import WorkspaceAction
+        from app.schemas import ProductDefinition
         if schema is PlanAssessment:
-            key=context['plan']['epics'][0]['tasks'][0]['key']
-            result=PlanAssessment(criteria=[CriterionCheck(criterion_index=i,capability_ids=['python_service','portable_package'],task_keys=[key],verification='Независимый HTTP тест результата и чистая установка пакета') for i,_ in enumerate(context['product']['acceptance_criteria'])])
+            keys=[t['key'] for e in context['plan']['epics'] for t in e['tasks'] if t['role'] in ['application_developer','qa']] or [context['plan']['epics'][0]['tasks'][0]['key']]
+            result=PlanAssessment(criteria=[CriterionCheck(criterion_index=i,capability_ids=['python_service','portable_package'],task_keys=keys,verification='Независимый HTTP тест результата и чистая установка пакета') for i,_ in enumerate(context['product']['acceptance_criteria'])])
+        elif schema is ProductDefinition:
+            result=ProductDefinition(title='Проверка разработки по задачам',kind='service',output_type='scalar',needs_database=False,
+                architecture='Независимый Python HTTP сервис с сохраняемой рабочей копией и последовательными задачами.',
+                operating_notes='Миграции и внешние данные отсутствуют; GET /result возвращает 42 synthetic-check; установка по install.md.')
+        elif schema is WorkspaceAction:
+            from app.mock_workspace import action
+            result=action(context,role)
         elif schema is Contribution:
             result=Contribution(specification='Синтетическая проверка протокола поставки: результат 42 synthetic-check, независимая сверка, без загрузки внешних данных.',files={})
         elif schema is ProductSolution:
@@ -101,10 +110,20 @@ class MockProvider:
             result=ProductReview(approved=True,findings=[])
         elif schema is PMResult and context.get('delivery_mode')=='product':
             result=PMResult(goal='Проверить самостоятельную поставку синтетического продукта',acceptance_criteria=['GET /result возвращает value=42 и unit=synthetic-check','Продукт работает без сервисов AI-команды'],priorities=['Независимый запуск','Воспроизводимая поставка'],questions=[])
+            if '[stage8' in context['story']:result.acceptance_criteria.append('GET /extra возвращает value=43 и unit=synthetic-check, исходный результат сохранён')
         elif schema is SAResult and context.get('delivery_mode')=='product':
-            roles=['financial_analyst','designer','data_developer','application_developer','qa','system_analyst']
-            result=SAResult(architecture='Самостоятельный Python HTTP продукт на общей продуктовой инфраструктуре, отдельный volume, Dockerfile и install.md; служебные API команды не используются.',epics=[{'key':'product','title':'Самостоятельный продукт','tasks':[
-                {'key':r,'title':'Продукт: '+r,'role':r,'acceptance_criteria':['Результат роли документирован и проверяем'], 'depends_on':([roles[i-1]] if i else [])} for i,r in enumerate(roles)]}])
+            if '[stage8' in context['story']:
+                result=SAResult(architecture='Два последовательных эпика: сначала общий модуль и HTTP сервис, затем новый результат без потери исходного; отдельные ветки задач, проверки и релизы.',epics=[
+                    {'key':'base','title':'Базовый сервис','tasks':[
+                        {'key':'data','title':'Подготовить модуль контрольного значения','role':'data_developer','acceptance_criteria':['base_value возвращает 42'],'depends_on':[]},
+                        {'key':'service','title':'Создать HTTP сервис и исходный тест','role':'application_developer','acceptance_criteria':['GET /result возвращает 42'],'depends_on':['data']}]},
+                    {'key':'extension','title':'Расширение сервиса','tasks':[
+                        {'key':'extend','title':'Добавить отдельный результат 43','role':'application_developer','acceptance_criteria':['GET /extra возвращает 43; /result сохраняет 42'],'depends_on':['service']},
+                        {'key':'quality','title':'Проверить исходный и новый результаты','role':'qa','acceptance_criteria':['Оба результата проверяются независимо'],'depends_on':['extend']}]}])
+            else:
+                roles=['financial_analyst','designer','data_developer','application_developer','qa','system_analyst']
+                result=SAResult(architecture='Самостоятельный Python HTTP продукт с рабочей копией, отдельными задачами, проверками и собственным пакетом.',epics=[{'key':'product','title':'Самостоятельный продукт','tasks':[
+                    {'key':r,'title':'Продукт: '+r,'role':r,'acceptance_criteria':['Результат роли документирован и проверяем'], 'depends_on':([roles[i-1]] if i else [])} for i,r in enumerate(roles)]}])
         elif schema is PMResult:
             result=PMResult(goal='Создать проверяемую витрину анализа кредитного портфеля',acceptance_criteria=['Согласовать метрики и правила агрегации','Проверить расчёты на синтетических данных'],priorities=['Определения метрик','Данные и проверки'],questions=['Как выбирать срез конца месяца?'] if '[уточнить]' in context['story'] and not context['answers'] else [])
         elif schema is SQLArtifact:
