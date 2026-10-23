@@ -85,3 +85,8 @@ def inspect_snapshot(content):
         validate_workspace(files)
         if source_digest(files)!=manifest['source_digest']:raise ValueError('Workspace digest changed')
         return manifest,files
+
+
+def repeated_action(files,action,observations):
+    signature=file_hash(json.dumps({'source_digest':source_digest(files),'action':action.model_dump(mode='json')|{'summary':''}},sort_keys=True,ensure_ascii=False))
+    return signature,sum(row.get('_action_signature')==signature for row in observations)>=2

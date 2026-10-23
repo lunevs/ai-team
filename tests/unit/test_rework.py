@@ -90,3 +90,15 @@ def test_product_package_reader_uses_immutable_storage_identity(monkeypatch):
     assert calls[0][0]==str(storage)
     products.package_bytes({'id':identity,'package':{'sha256':'a'*64}})
     assert calls[1][0]==identity # Earlier products stay readable.
+
+
+def test_identical_actions_stop_repeating_but_new_information_keeps_progress():
+    from app.workspace_policy import repeated_action
+    from app.workspace_contract import WorkspaceAction
+    action=WorkspaceAction(operation='read',path='app.py',summary='Прочитать исходный код')
+    files={'app.py':'value=41'}
+    signature,stalled=repeated_action(files,action,[]);assert not stalled
+    history=[{'_action_signature':signature}]*2
+    assert repeated_action(files,action,history)[1]
+    assert not repeated_action({'app.py':'value=42'},action,history)[1]
+    assert not repeated_action(files,action.model_copy(update={'offset':10}),history)[1]
