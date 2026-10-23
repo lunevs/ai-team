@@ -103,6 +103,10 @@ def save_journal(path,value):
     temporary.replace(path)
 
 
+def tree_deletions(tree,root,paths):
+    return [{'path':item['path'],'mode':'100644','type':'blob','sha':None} for item in tree if item['type']=='blob' and item['path'].startswith(root) and item['path'] not in paths]
+
+
 def publish_task(data,task,base_sha):
     if not task.files:raise HTTPException(422,'Empty bundle')
     if data.workspace_task:
@@ -206,12 +210,11 @@ def publish_task(data,task,base_sha):
             tree.append({'path':name if data.product_package or data.workspace_task else f'deliveries/{data.story_id}/r{data.revision}/task-{task.task_id}/{name}',
                          'mode':'100644','type':'blob','sha':blob['sha']})
         parent=github(REPO+'/git/commits/'+release_sha)
-        if data.workspace_task:
+        if data.workspace_task or data.workspace_delivery:
             old_tree=github(REPO+'/git/trees/'+parent['tree']['sha']+'?recursive=1')
             if old_tree.get('truncated'):raise HTTPException(409,'Repository tree truncated')
-            for item in old_tree['tree']:
-                if item['type']=='blob' and item['path'].startswith(root+'source/') and item['path'] not in blobs:
-                    tree.append({'path':item['path'],'mode':'100644','type':'blob','sha':None})
+            delete_root=root+'source/' if data.workspace_task else '/'.join(next(iter(blobs)).split('/')[:2])+'/'
+            tree.extend(tree_deletions(old_tree['tree'],delete_root,blobs))
         created_tree=github(REPO+'/git/trees','POST',{'base_tree':parent['tree']['sha'],'tree':tree})
         commit=github(REPO+'/git/commits','POST',{'message':marker,'tree':created_tree['sha'],'parents':[release_sha]})
         sha=commit['sha']

@@ -102,3 +102,10 @@ def test_identical_actions_stop_repeating_but_new_information_keeps_progress():
     assert repeated_action(files,action,history)[1]
     assert not repeated_action({'app.py':'value=42'},action,history)[1]
     assert not repeated_action(files,action.model_copy(update={'offset':10}),history)[1]
+
+
+def test_repaired_package_deletes_obsolete_files_only_inside_its_own_root():
+    from app.git_broker import tree_deletions
+    tree=[{'path':p,'type':'blob'} for p in ['products/p-123/app.py','products/p-123/obsolete.py','products/p-456/private.py','app/api.py']]
+    result=tree_deletions(tree,'products/p-123/',{'products/p-123/app.py':b'current'})
+    assert result==[{'path':'products/p-123/obsolete.py','mode':'100644','type':'blob','sha':None}]
