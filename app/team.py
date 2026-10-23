@@ -120,7 +120,7 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
             card['current']='Ожидает публикации PR'
         elif card['current'] == 'Нет активной задачи' and card['remaining']:
             card['current'] = ('Ожидает одобрения спецификации' if story.get('approved') else 'Ожидает одобрения плана') if story['status'] == 'PLAN_REVIEW' else queued_activity(card, closed_keys, task_titles, worker_active)
-    if story.get('delivery_mode')=='product' and product_status and not stopped:
+    if story.get('delivery_mode')=='product' and product_status and (not stopped or (story['status']=='BLOCKED' and product_status=='ESCALATED' and not story.get('questions') and not story.get('error_type'))):
         current_results={result['role'] for result in results if result['revision']==story['revision']}
         active_roles={call['role'] for call in calls if call['revision']==story['revision'] and call['state']=='reserved'} if worker_active else set()
         for role,card in cards.items():
@@ -160,6 +160,10 @@ def product_activity(role, status, results, active, fallback):
         'qa':('product_qa','Проверка приложения завершена'),
         'system_analyst':('product_review','Проверка устройства решения завершена')}
     key,summary=prepared[role]
+    if status=='ESCALATED':
+        if role=='application_developer':return 'Приложение требует доработки после проверки'
+        if role=='qa':return 'Проверка завершена; ждёт исправлений' if key in results else 'Ждёт исправлений для повторной проверки'
+        if role=='system_analyst':return 'Проверка решения завершена; ждёт доработок' if key in results else 'Ждёт разбора замечаний к решению'
     if key in results:
         if role=='application_developer' and status=='CHECK_PENDING':
             return summary+'; ждёт проверки'

@@ -88,3 +88,13 @@ def test_product_wait_is_personal_and_based_on_current_revision_results():
 def test_active_product_role_takes_priority_over_prepared_result():
     from app.team import product_activity
     assert product_activity('application_developer','CHECK_PENDING',{'product_solution'},True,'')=='Создаёт приложение'
+
+
+def test_product_escalation_keeps_personal_results_and_explains_rework():
+    story={'revision':1,'status':'BLOCKED','delivery_mode':'product','product':{'status':'ESCALATED'},'questions':[]}
+    results=[{'role':role,'revision':1} for role in ['pm','product_financial_analyst','product_qa','product_review']]
+    cards={a['role']:a for a in project_team(story,results,{},[],[],{},True,False)['agents']}
+    assert cards['pm']['current']=='Цель и требования подготовлены'
+    assert cards['financial_analyst']['current']=='Описание показателей подготовлено'
+    assert cards['application_developer']['current']=='Приложение требует доработки после проверки'
+    assert cards['qa']['current']=='Проверка завершена; ждёт исправлений'

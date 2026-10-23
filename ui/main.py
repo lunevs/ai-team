@@ -84,7 +84,7 @@ def interaction_panel(id):
         st.caption('LLM backend: '+', '.join(story['usage']['backends']))
     a,b,c=st.columns(3)
     display_status=story['status'] if story['status'] in ['BLOCKED','FAILED','CANCELLED'] else ((story.get('product') or {}).get('status') or story['status'])
-    status_names={'CHECK_PENDING':'Ждёт тестов контейнера','DEPLOY_READY':'Ждёт развёртывания','WAITING_GITHUB':'Ждёт публикации PR','PUBLISHED':'Ждёт ревью и слияния PR','PLAN_REVIEW':'Ждёт одобрения плана','BLOCKED':'Ждёт решения' if story.get('error_type') else 'Ждёт ваших ответов','FAILED':'Ошибка','NEW':'Готовится к работе','IN_PROGRESS':'В работе','ACCEPTANCE':'Ждёт приёмки','DONE':'Завершено','CANCELLED':'Отменено'}
+    status_names={'CHECK_PENDING':'Ждёт тестов контейнера','DEPLOY_READY':'Ждёт развёртывания','WAITING_GITHUB':'Ждёт публикации PR','PUBLISHED':'Ждёт ревью и слияния PR','PLAN_REVIEW':'Ждёт одобрения плана','BLOCKED':'Ждёт ваших ответов' if story.get('questions') else 'Требуется разбор замечаний','FAILED':'Ошибка','NEW':'Готовится к работе','IN_PROGRESS':'В работе','ACCEPTANCE':'Ждёт приёмки','DONE':'Завершено','CANCELLED':'Отменено'}
     a.markdown('**Статус**')
     a.write(status_names.get(display_status,display_status))
     b.metric('LLM-вызовы',story['usage']['calls'])
