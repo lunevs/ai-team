@@ -61,3 +61,10 @@ def test_invalid_output_repair_is_bounded_and_keeps_budget_path(monkeypatch):
     with pytest.raises(providers.InvalidModelOutput):
         providers.generate('story','pm',PMResult,{'story':'request'})
     assert len(calls)==2
+
+
+def test_story_budget_defaults_are_unlimited_but_explicit_caps_remain_valid():
+    from app.schemas import StoryInput
+    story=StoryInput(text='Создать аналитическое хранилище данных',synthetic_only=True)
+    assert (story.max_calls,story.max_tokens,story.max_cost_usd)==(None,None,None)
+    assert StoryInput(text=story.text,synthetic_only=True,max_calls=100,max_tokens=200000,max_cost_usd=10).max_calls==100

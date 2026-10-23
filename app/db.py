@@ -101,7 +101,9 @@ def reserve_call(story_id,role,tokens,cost):
         if row['status']=='CANCELLED': raise Cancelled()
         used=conn.execute('''SELECT count(*) AS calls,coalesce(sum(coalesce(actual_tokens,reserved_tokens)),0) AS tokens,
           coalesce(sum(coalesce(actual_cost,reserved_cost)),0) AS cost FROM llm_calls WHERE story_id=%s''',(story_id,)).fetchone()
-        if used['calls']+1>row['max_calls'] or used['tokens']+tokens>row['max_tokens'] or float(used['cost'])+cost>float(row['max_cost_usd']):
+        if ((row['max_calls'] is not None and used['calls']+1>row['max_calls'])
+                or (row['max_tokens'] is not None and used['tokens']+tokens>row['max_tokens'])
+                or (row['max_cost_usd'] is not None and float(used['cost'])+cost>float(row['max_cost_usd']))):
             raise BudgetExceeded()
         call_id=uuid.uuid4()
         conn.execute('INSERT INTO llm_calls(id,story_id,role,revision,backend,model,state,reserved_tokens,reserved_cost) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)',

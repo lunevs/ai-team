@@ -43,3 +43,26 @@ def test_product_activity_and_history_use_product_roles():
     assert app['current']=='Пишет приложение и тесты'
     assert app['history'][0]['title']=='Подготовил исходники и тесты'
     assert app['completed']==0 # source preparation does not close the tracker task
+
+
+def test_blocked_explains_questions_and_budget_separately():
+    base={'revision':1,'status':'BLOCKED','questions':['Which forms?'],'plan':None}
+    cards=project_team(base,[],{},[],[],{},True,False)['agents']
+    assert all('ответов заказчика' in c['current'] for c in cards)
+    base['error_type']='BudgetExceeded'
+    cards=project_team(base,[],{},[],[],{},True,False)['agents']
+    assert all('лимита' in c['current'] for c in cards)
+
+
+def test_queue_explains_dependency_then_next_task_and_worker_wait():
+    story={'revision':1,'status':'IN_PROGRESS','plan':{'epics':[{'tasks':[
+        {'key':'source','title':'Спроектировать источники','role':'system_analyst'},
+        {'key':'build','title':'Разработать загрузку','role':'data_developer','depends_on':['source']}]}]}}
+    links=[{'key':'r1:task:source','external_id':1,'url':'/1'}]
+    def current(packages,worker):
+        cards=project_team(story,[],{},[],links,packages,True,worker)['agents']
+        return next(c['current'] for c in cards if c['role']=='data_developer')
+    assert 'Ждёт завершения: Спроектировать источники' in current({},True)
+    closed={1:{'_embedded':{'status':{'isClosed':True}}}}
+    assert current(closed,True)=='Готовится приступить к задаче: Разработать загрузку'
+    assert 'Ждёт запуска worker' in current(closed,False)

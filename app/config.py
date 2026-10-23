@@ -24,9 +24,9 @@ class Settings:
     book_id: int = field(default_factory=lambda: int(os.getenv('BOOKSTACK_BOOK_ID', '1')))
     agent_ids: dict = field(default_factory=lambda: json.loads(os.getenv('AGENT_USER_IDS') or '{}'))
     status_ids: dict = field(default_factory=lambda: json.loads(os.getenv('OPENPROJECT_STATUS_IDS') or '{}'))
-    max_calls: int = 8
-    max_tokens: int = 60000
-    max_cost: float = 1.0
+    max_calls: int | None = None
+    max_tokens: int | None = None
+    max_cost: float | None = None
     completion_tokens: int = 4096
     input_price: float = field(default_factory=lambda: float(os.getenv('LLM_INPUT_USD_PER_MILLION', '1')))
     output_price: float = field(default_factory=lambda: float(os.getenv('LLM_OUTPUT_USD_PER_MILLION', '4')))

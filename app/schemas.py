@@ -18,9 +18,9 @@ class StoryInput(StrictModel):
     text: str = Field(min_length=20, max_length=8000)
     delivery_mode: Literal['credit_demo','product'] = 'credit_demo'
     synthetic_only: Literal[True]
-    max_calls: int = Field(default=8, ge=1, le=8)
-    max_tokens: int = Field(default=60000, ge=100, le=60000)
-    max_cost_usd: float = Field(default=1.0, gt=0, le=1.0, allow_inf_nan=False)
+    max_calls: int | None = Field(default=None, ge=1)
+    max_tokens: int | None = Field(default=None, ge=100)
+    max_cost_usd: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
 class Approval(StrictModel):
     revision: int = Field(ge=1)
