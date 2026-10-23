@@ -87,7 +87,14 @@ class MockProvider:
         from app.feasibility import PlanAssessment,CriterionCheck
         from app.workspace_contract import WorkspaceAction
         from app.schemas import ProductDefinition
-        if schema is PlanAssessment:
+        from app.rework_contract import SourceReview,Triage
+        if schema is SourceReview:
+            phantom='[stage9' in context['story'] and context['task']['key']=='service' and context['attempt']==1 and role=='qa'
+            result=SourceReview(approved=not phantom,findings=[{'summary':'В рабочих исходниках отсутствует Dockerfile','criterion':'Продукт должен устанавливаться самостоятельно','evidence':'Dockerfile не представлен в files','severity':'minor','verification':'Проверить состав файлов пакета после упаковки'}] if phantom else [])
+        elif schema is Triage:
+            result=Triage(findings=[{'index':i,'decision':'dismissed' if 'Dockerfile' in f['summary'] else 'confirmed',
+                'reason':'Dockerfile добавляется доверенной платформой при упаковке; замечание не относится к исходникам.' if 'Dockerfile' in f['summary'] else 'Фактическое доказательство указывает на несоответствие критерию; требуется исправление и повторная проверка.'} for i,f in enumerate(context['findings'])],next_action='Прочитать актуальный исходник, устранить указанную причину и повторить независимые проверки; критерии не менять.')
+        elif schema is PlanAssessment:
             keys=[t['key'] for e in context['plan']['epics'] for t in e['tasks'] if t['role'] in ['application_developer','qa']] or [context['plan']['epics'][0]['tasks'][0]['key']]
             result=PlanAssessment(criteria=[CriterionCheck(criterion_index=i,capability_ids=['python_service','portable_package'],task_keys=keys,verification='Независимый HTTP тест результата и чистая установка пакета') for i,_ in enumerate(context['product']['acceptance_criteria'])])
         elif schema is ProductDefinition:
@@ -107,12 +114,14 @@ class MockProvider:
                 operating_notes='Миграции и внешние данные отсутствуют. GET /result возвращает синтетическое значение 42; backup требуется только для volume результатов.',
                 files={'app.py':(root/'smoke_app.py').read_text(),'tests/test_product.py':(root/'smoke_test.py').read_text()})
         elif schema is ProductReview:
-            result=ProductReview(approved=True,findings=[])
+            missing='[stage9' in context['story'] and role=='qa' and 'docs/usage.md' not in context['solution']['files']
+            result=ProductReview(approved=not missing,findings=['Отсутствует требуемое описание получения результата docs/usage.md; добавить инструкцию без изменения критериев.'] if missing else [])
         elif schema is PMResult and context.get('delivery_mode')=='product':
             result=PMResult(goal='Проверить самостоятельную поставку синтетического продукта',acceptance_criteria=['GET /result возвращает value=42 и unit=synthetic-check','Продукт работает без сервисов AI-команды'],priorities=['Независимый запуск','Воспроизводимая поставка'],questions=[])
-            if '[stage8' in context['story']:result.acceptance_criteria.append('GET /extra возвращает value=43 и unit=synthetic-check, исходный результат сохранён')
+            if any(mark in context['story'] for mark in ['[stage8','[stage9']):result.acceptance_criteria.append('GET /extra возвращает value=43 и unit=synthetic-check, исходный результат сохранён')
+            if '[stage9' in context['story']:result.acceptance_criteria+=['GET /health возвращает status=ok','Файл docs/usage.md описывает получение результата']
         elif schema is SAResult and context.get('delivery_mode')=='product':
-            if '[stage8' in context['story']:
+            if any(mark in context['story'] for mark in ['[stage8','[stage9']):
                 result=SAResult(architecture='Два последовательных эпика: сначала общий модуль и HTTP сервис, затем новый результат без потери исходного; отдельные ветки задач, проверки и релизы.',epics=[
                     {'key':'base','title':'Базовый сервис','tasks':[
                         {'key':'data','title':'Подготовить модуль контрольного значения','role':'data_developer','acceptance_criteria':['base_value возвращает 42'],'depends_on':[]},
