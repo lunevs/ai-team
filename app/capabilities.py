@@ -31,10 +31,11 @@ def registry():
         'version': 1, 'profile': 'python-locked-v1',
         'scope': 'Возможности доверенного профиля. Это не проверка доступности сервисов и не гарантия выполнения бизнес-требований.',
         'runtime_lock_sha256': hashlib.sha256(lock).hexdigest(),
-        'limits': {'epics': 1, 'source_files': 24, 'source_total_bytes': 2_000_000,
+        'limits': {'epics': 1, 'source_files': 24, 'generation_file_target':6, 'generation_code_target_chars':10000, 'source_total_bytes': 2_000_000,
                    'development': 'Полный небольшой продукт за одну генерацию; не универсальная среда разработки.'},
         'capabilities': {key: {'supported': supported, 'name': name, 'detail': detail}
                          for key, (supported, name, detail) in DEFINITIONS.items()},
+        'implementation_sha256': {name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in ['product_policy.py','product_contract.py','products.py']},
         'evidence': ['app/product_policy.py', 'app/product_contract.py', 'app/products.py',
                      'app/product_templates/runtime-requirements.lock', 'scripts/product_operator.py'],
     }

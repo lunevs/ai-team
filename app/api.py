@@ -67,13 +67,16 @@ def require_story(id):
     return row
 
 def public_story(row):
+    from app.feasibility import get as get_feasibility
+    row=dict(row)
+    row['feasibility']=get_feasibility(row['id'],row['revision'])
     from app.products import get as get_product, public as public_product
     from app.analytics import get_run
     from app.execution import get_run as get_execution
     with db.connection() as conn:
         links=conn.execute('SELECT key,external_id,url FROM external_ids WHERE story_id=%s ORDER BY key',(row['id'],)).fetchall()
     main=next((x['external_id'] for x in links if x['key']=='main'),None)
-    return {k:row[k] for k in ['id','text','delivery_mode','max_calls','max_tokens','max_cost_usd','status','revision','pm','plan','plan_digest','approved','questions','trace_id','error_type','created_at','updated_at']} | {'waiting_reason':waiting_reason(row),'product':public_product(get_product(row['id'],row['revision'])),'story_id':row['id'],'openproject_work_package_id':main,'links':links,'usage':db.usage(row['id']),'analytics':get_run(row['id'],row['revision']),'execution':get_execution(row['id'],row['revision'])}
+    return {k:row[k] for k in ['id','text','delivery_mode','max_calls','max_tokens','max_cost_usd','status','revision','pm','plan','plan_digest','approved','questions','trace_id','error_type','created_at','updated_at']} | {'feasibility':row['feasibility'],'waiting_reason':waiting_reason(row),'product':public_product(get_product(row['id'],row['revision'])),'story_id':row['id'],'openproject_work_package_id':main,'links':links,'usage':db.usage(row['id']),'analytics':get_run(row['id'],row['revision']),'execution':get_execution(row['id'],row['revision'])}
 
 @app.post('/stories',status_code=201)
 def create(data:StoryInput,response:Response,idempotency_key:str=Header(min_length=8,max_length=128),user=Depends(current_user)):
@@ -127,6 +130,9 @@ def approve(id:uuid.UUID,data:Approval,user=Depends(current_user)):
         row=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(id,)).fetchone()
         if row['revision']!=data.revision or row['plan_digest']!=data.plan_digest:
             raise db.Conflict('Ревизия плана изменилась')
+        if row['delivery_mode']=='product':
+            from app.feasibility import require_ready
+            require_ready(row,conn)
         if row['approved'] and row['status'] in ['PLAN_REVIEW','IN_PROGRESS']:
             return {'status':'approved','revision':row['revision']}
         if row['status']!='PLAN_REVIEW': raise db.Conflict('План сейчас нельзя одобрить')
@@ -154,12 +160,17 @@ def resume(id:uuid.UUID,data:Resume,user=Depends(current_user)):
         row=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(id,)).fetchone()
         if row['status'] not in ['BLOCKED','FAILED']:
             raise db.Conflict('Возобновление доступно только для BLOCKED/FAILED')
-        if data.answers.strip():
-            conn.execute("UPDATE stories SET revision=revision+1,answers=%s,pm=NULL,plan=NULL,plan_digest=NULL,approved=false,questions='[]',status='NEW',error_type=NULL,updated_at=now() WHERE id=%s",(data.answers,id))
+        from app.feasibility import get as get_feasibility
+        report=get_feasibility(id,row['revision'],conn) if row['delivery_mode']=='product' else None
+        from app.capabilities import registry
+        technical_recheck=row['delivery_mode']=='product' and (not report or report['status']!='READY' or report['registry_digest']!=registry()['digest'])
+        if row['questions'] and not data.answers.strip():raise db.Conflict('Нужны ответы на вопросы')
+        if data.answers.strip() or technical_recheck:
+            conn.execute("UPDATE stories SET revision=revision+1,answers=%s,pm=NULL,plan=NULL,plan_digest=NULL,approved=false,questions='[]',status='NEW',error_type=NULL,updated_at=now() WHERE id=%s",(data.answers if data.answers.strip() else row['answers'],id))
         else:
             if row['questions']: raise db.Conflict('Нужны ответы на вопросы')
             conn.execute("UPDATE stories SET status='NEW',error_type=NULL,updated_at=now() WHERE id=%s",(id,))
-        db.event(conn,row,'story.resumed',{'actor':user,'new_revision':bool(data.answers.strip())})
+        db.event(conn,row,'story.resumed',{'actor':user,'new_revision':bool(data.answers.strip()) or technical_recheck})
         db.enqueue(conn,id)
     return public_story(require_story(id))
 
@@ -169,6 +180,8 @@ def team(id:uuid.UUID,user=Depends(current_user)):
     from app.integrations import tracker
     from app.config import settings
     story=require_story(id)
+    from app.feasibility import get as get_feasibility
+    story['feasibility']=get_feasibility(id,story['revision'])
     with db.connection() as conn:
         story['product']=conn.execute('SELECT status FROM product_releases WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()
         story['execution']=conn.execute('SELECT status FROM execution_runs WHERE story_id=%s AND revision=%s',(id,story['revision'])).fetchone()

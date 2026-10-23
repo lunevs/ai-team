@@ -156,12 +156,13 @@ def sync_status(story_id,status):
     tracker.set_status(story_id,status)
     if status!='CANCELLED': db.set_status(story_id,status)
 
-def publish_plan(story_id,pm,plan):
+def publish_plan(story_id,pm,plan,feasibility=None):
     tracker.honor_remote_stop(story_id)
     story=db.active(story_id)
     revision=story['revision']
     prefix=f'r{revision}:'
     text='# Цель\n'+pm.goal+'\n\n# Критерии приёмки\n'+'\n'.join('- '+x for x in pm.acceptance_criteria)+'\n\n# Архитектура\n'+plan.architecture+'\n\n# План\n'+json.dumps(plan.model_dump(),ensure_ascii=False,indent=2)
+    if feasibility:text+='\n\n# Проверка возможностей\n'+feasibility['documentation_url']
     page=knowledge.ensure_page(story_id,prefix+'plan','План и архитектура',text)
     main=ensure_main(story_id)
     main_item=tracker.request(f'/api/v3/work_packages/{main}',role='pm')
@@ -177,7 +178,7 @@ def publish_plan(story_id,pm,plan):
         for task in epic.tasks:
             tracker.honor_remote_stop(story_id)
             task_page=knowledge.ensure_page(story_id,prefix+'task:'+task.key,task.title,
-              f'# {task.title}\n\nИсполнитель: {task.role.value}\n\nПлан: {page}\n\nКритерии:\n'+'\n'.join('- '+x for x in task.acceptance_criteria)+'\n\nЗависимости: '+', '.join(task.depends_on))
+              f'# {task.title}\n\nИсполнитель: {task.role.value}\n\nПлан: {page}\n\nКритерии:\n'+'\n'.join('- '+x for x in task.acceptance_criteria)+'\n\nЗависимости: '+', '.join(task.depends_on)+('\n\nКритерии заказчика и независимые проверки:\n'+'\n'.join('- '+row['criterion']+' — '+row['verification'] for row in feasibility['criteria'] if task.key in row['task_keys']) if feasibility else ''))
             task_ids[task.key]=tracker.ensure(story_id,prefix+'task:'+task.key,task.title,'Документация: '+task_page+'\nРоль: '+task.role.value+f"\nTrace ID: {story['trace_id']}",1,parent=epic_id,assignee=settings.agent_ids.get(task.role.value))
             tasks.append(task)
     for task in tasks:

@@ -5,6 +5,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import interrupt, Command
 from psycopg.types.json import Jsonb
 from app import db
+from app.capabilities import registry
 from app.schemas import PMResult,SAResult
 from app.synthetic import METRICS,SEED,VERSION,MODEL_CONTRACT
 from app.providers import generate
@@ -26,7 +27,7 @@ def build_graph(saver):
         story=db.active(id)
         context={'story':story['text'],'answers':story['answers'],'delivery_mode':story['delivery_mode']}
         if story['delivery_mode']=='product':
-            context|={'instruction':'Определи цель, критерии, приоритеты и формат результата самостоятельного продукта. Всегда заполни goal (не менее 5 символов), acceptance_criteria и priorities (непустые списки), questions (список). Если нужны уточнения, всё равно верни предварительную цель, критерии и приоритеты; вопросы помести только в questions. Не подставляй кредитное демо. Только публичные/синтетические данные, отдельный продуктовый контур, возможна общая инфраструктура продуктов. Уточни отсутствующие бизнес-требования до реализации; не загружай данные, если это не поручено. Текущий профиль реализации: Python 3.12 с доверенными зависимостями, сервис HTTP или job; иных профилей пока нет.'}
+            context|={'capabilities':registry(),'technical_policy':'Отсутствие технической возможности — работа команды по расширению платформы. Не задавай заказчику вопросы о доступности инструментов и не исключай требование из критериев из-за отсутствия инструмента.', 'instruction':'Определи цель, критерии, приоритеты и формат результата самостоятельного продукта. Всегда заполни goal (не менее 5 символов), acceptance_criteria и priorities (непустые списки), questions (список). Если нужны уточнения, всё равно верни предварительную цель, критерии и приоритеты; вопросы помести только в questions. Не подставляй кредитное демо. Только публичные/синтетические данные, отдельный продуктовый контур, возможна общая инфраструктура продуктов. Уточни отсутствующие бизнес-требования до реализации; не загружай данные, если это не поручено. Текущий профиль реализации: Python 3.12 с доверенными зависимостями, сервис HTTP или job; иных профилей пока нет.'}
         else:
             context|={'demo_defaults':METRICS,'model_contract':MODEL_CONTRACT,'dataset':{'version':VERSION,'seed':SEED,'months':'2026-01..2026-06','synthetic_only':True},'instruction':'Определи цель, критерии и приоритеты. Используй переданный демонстрационный паспорт; при противоречии истории задай вопрос.'}
         result=generate(id,'pm',PMResult,context)
@@ -44,7 +45,7 @@ def build_graph(saver):
         story=db.active(state['story_id'])
         tracker.honor_remote_stop(story['id'])
         if story['delivery_mode']=='product':
-            result=generate(story['id'],'system_analyst',SAResult,{'story':story['text'],'answers':story['answers'],'product':state['pm'],'delivery_mode':'product',
+            result=generate(story['id'],'system_analyst',SAResult,{'story':story['text'],'answers':story['answers'],'product':state['pm'],'delivery_mode':'product','capabilities':registry(),
                 'instruction':'Архитектура самостоятельного Python-продукта. Один эпик с шестью задачами: financial_analyst, designer, data_developer, application_developer, qa, system_analyst (ревью). Уникальные ключи, ацикличные зависимости. Исходники и тесты в отдельном продуктовом пакете с Docker/Compose/install.md; runtime независим от команды. Общая продуктовая инфраструктура разрешена, данные и роли отделены от служебной БД команды. Системный аналитик назначает исполнителей. До 1200 символов архитектуры; краткие критерии.'})
             return {'plan':result.model_dump(mode='json')}
         result=generate(story['id'],'system_analyst',SAResult,{'story':story['text'],'answers':story['answers'],'product':state['pm'],'instruction':'Подготовь архитектуру и эпики с задачами, критериями, зависимостями и исполнителями. Не исполняй код. Ключи задач уникальны, зависимости ацикличны. Ограничь ответ: 1–2 эпика, ровно 4 задачи, максимум 2 коротких критерия на задачу; архитектура до 1200 символов. Не добавляй SQL или подробные скрипты.'})
@@ -52,7 +53,15 @@ def build_graph(saver):
 
     def publish_node(state):
         id=state['story_id']
-        page=publish_plan(id,PMResult.model_validate(state['pm']),SAResult.model_validate(state['plan']))
+        story=db.active(id)
+        feasibility=None
+        if story['delivery_mode']=='product':
+            from app.feasibility import assess
+            feasibility=assess(story,state['pm'],state['plan'])
+            if feasibility['status']!='READY':
+                sync_status(id,'BLOCKED')
+                return {'documentation_url':feasibility['documentation_url']}
+        page=publish_plan(id,PMResult.model_validate(state['pm']),SAResult.model_validate(state['plan']),feasibility=feasibility)
         digest=hashlib.sha256(json.dumps({'pm':state['pm'],'plan':state['plan']},sort_keys=True,ensure_ascii=False).encode()).hexdigest()
         with db.connection() as conn:
             row=conn.execute('SELECT * FROM stories WHERE id=%s FOR UPDATE',(id,)).fetchone()
@@ -87,7 +96,7 @@ def build_graph(saver):
     graph.add_conditional_edges('pm',lambda state:'blocked' if state['pm']['questions'] else 'system_analyst')
     graph.add_edge('blocked',END)
     graph.add_edge('system_analyst','publish')
-    graph.add_edge('publish','approval')
+    graph.add_conditional_edges('publish',lambda state:'approval' if db.get_story(state['story_id'])['status']=='PLAN_REVIEW' else END)
     graph.add_edge('approval','accepted')
     graph.add_edge('accepted',END)
     return graph.compile(checkpointer=saver)
