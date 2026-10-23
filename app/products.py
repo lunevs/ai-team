@@ -33,7 +33,8 @@ def package_bytes(record):
 
 def run(story_id):
     story=db.active(story_id);tracker.honor_remote_stop(story_id)
-    if len(story['plan']['epics'])!=1:raise db.Conflict('Product profile requires one epic per version')
+    workspace_mode=(story.get('plan') or {}).get('development_mode')=='workspace'
+    if not workspace_mode and len(story['plan']['epics'])!=1:raise db.Conflict('Legacy product profile requires one epic per version')
     if story['delivery_mode']!='product' or not story['approved']:raise db.Conflict('Product plan must be approved')
     from app.feasibility import require_ready
     require_ready(story)
@@ -46,6 +47,25 @@ def run(story_id):
             (uuid.uuid4(),story_id,story['revision'],'p-'+uuid.UUID(str(story_id)).hex[:12],'1.0.'+str(story['revision'])))
     record=get(story_id)
     if story['status']=='PLAN_REVIEW':sync_status(story_id,'IN_PROGRESS')
+    if workspace_mode and record['status'] in ['DEVELOPING','DEVELOPING_TASKS','WAITING_GITHUB']:
+        from app import workspaces
+        workspace=workspaces.advance(story)
+        if not workspace:
+            if record['status']=='DEVELOPING':update(record['id'],status='DEVELOPING_TASKS')
+            return
+        solution=ProductSolution(**workspace['definition'],files=workspace['files'])
+        contributions={}
+        for row in workspaces.tasks(workspace['id']):
+            previous=contributions.setdefault(row['role'],{'specification':'','files':{}})
+            previous['specification']+='\n'+(row['summary'] or '')
+        content,metadata=build_package(solution,record['product_key'],record['version'],story_id,story['revision'],contributions)
+        manifest=store().put(record['id'],'product.zip',content)
+        page=knowledge.ensure_page(story_id,f"r{story['revision']}:product",solution.title,
+            '# Продукт после выполнения задач\n\n'+solution.architecture+'\n\n'+solution.operating_notes+
+            '\n\nПроверенные задачи и релизы:\n```json\n'+json.dumps(workspace['git'],ensure_ascii=False,indent=2)+'\n```')
+        update(record['id'],status='CHECK_PENDING',specification=solution.model_dump()|{'contributions':contributions},
+            package=manifest,documentation_url=page,git=workspace['git'])
+        return
     if record['status']=='DEVELOPING':
         context={'story':story['text'],'answers':story['answers'],'plan':story['plan'],
             'delivery_mode':'product','product_key':record['product_key'],
@@ -81,9 +101,9 @@ def run(story_id):
         # conservative input reservations even when actual usage is well below budget.
         source={k:v for k,v in record['specification'].items() if k!='contributions'}
         business=record['specification'].get('contributions',{}).get('financial_analyst',{}).get('specification','')
-        qa=generate(story_id,'qa',ProductReview,{'story':story['text'],'solution':source,'business_rules':business,'checks':record['qa'],
+        qa=generate(story_id,'qa',ProductReview,{'story':story['text'],'answers':story['answers'],'plan':story['plan'],'package_manifest':record['package'],'platform_files':['Dockerfile','docker-compose.yml','install.md','runtime-requirements.lock'],'solution':source,'business_rules':business,'checks':record['qa'],
             'instruction':'Независимо оцени соответствие исходников критериям, адекватность тестов, экономические и граничные случаи. Реальный оператор выполнил тесты; не считай smoke достаточным для бизнес-приёмки. approved=false при ошибках или неподтверждённых требованиях.'},result_role='product_qa')
-        review=generate(story_id,'system_analyst',ProductReview,{'story':story['text'],'solution':source,'checks':record['qa'],'qa':qa.model_dump(),
+        review=generate(story_id,'system_analyst',ProductReview,{'story':story['text'],'answers':story['answers'],'plan':story['plan'],'platform_files':['Dockerfile','docker-compose.yml','install.md','runtime-requirements.lock'],'solution':source,'checks':record['qa'],'qa':qa.model_dump(),
             'instruction':'Проверь архитектуру, безопасность, самостоятельность, миграции и исходники. Не одобряй при серьёзных замечаниях; GitHub review остаётся отдельным.'},result_role='product_review')
         update(record['id'],review={'qa':qa.model_dump(),'architecture':review.model_dump()},status='READY_TO_PUBLISH' if qa.approved and review.approved else 'ESCALATED')
         if not qa.approved or not review.approved:sync_status(story_id,'BLOCKED')
@@ -92,17 +112,17 @@ def run(story_id):
         publish(story,record)
     if record['status']=='ACCEPTANCE' and record['accepted']:
         from app.delivery import broker
-        epics={p['epic_id'] for p in record['git']['pulls']}
-        if len(epics)!=1:raise db.Conflict('Product release requires one epic')
-        release=broker('/release',{'pulls':record['git']['pulls'],'epic_id':next(iter(epics))})
+        final_epic=db.external(story_id,f"r{story['revision']}:epic:{story['plan']['epics'][-1]['key']}")['external_id']
+        final_pulls=[p for p in record['git']['pulls'] if p['epic_id']==final_epic]
+        release=broker('/release',{'pulls':final_pulls,'epic_id':final_epic})
         update(record['id'],status='RELEASE_REVIEW',git=record['git']|{'release':release})
     if record['status']=='RELEASE_REVIEW':
         from app.delivery import broker
         release=record['git']['release']
-        gate=broker('/gate',{'pulls':[{'number':release['number'],'commit':release['commit'],'product_package':True}]})
+        gate=broker('/gate',{'pulls':[{'number':release['number'],'commit':release['commit'],'product_package':True,'workspace_task':bool(release.get('workspace_task'))}]})
         if gate['eligible']:
             tagged=broker('/finalize-release',{'epic_id':release['epic_id'],'number':release['number'],
-                'commit':release['commit'],'version':record['version'],'product_package':True})
+                'commit':release['commit'],'version':record['version'],'product_package':True,'workspace_task':bool(release.get('workspace_task'))})
             if tagged.get('pending'):return
             update(record['id'],git=record['git']|{'tag':tagged})
             from app.config import settings
@@ -125,14 +145,17 @@ def publish(story,record):
     from app.delivery import broker
     if record['status']!='PUBLISHED':
         readiness=broker('/ready')
-        if not readiness.get('configured') or not readiness.get('product_base_ready'):
+        workspace_mode=(story.get('plan') or {}).get('development_mode')=='workspace'
+        if not readiness.get('configured') or not readiness.get('workspace_base_ready' if workspace_mode else 'product_base_ready'):
             update(record['id'],status='WAITING_GITHUB');return
         metadata,files=inspect_package(package_bytes(record))
         tasks=[]
+        workspace_mode=(story.get('plan') or {}).get('development_mode')=='workspace'
         # Each planned task receives its own immutable contribution and PR to its epic release.
         for epic in story['plan']['epics']:
             epic_id=db.external(story['id'],f"r{story['revision']}:epic:{epic['key']}")['external_id']
             for task in epic['tasks']:
+                if workspace_mode and task.get('kind')!='package':continue
                 task_id=db.external(story['id'],f"r{story['revision']}:task:{task['key']}")['external_id']
                 prefix=f"products/{record['product_key']}/"
                 if task['role']=='application_developer':
@@ -159,7 +182,9 @@ def publish(story,record):
                     'files':{k:base64.b64encode(v).decode() for k,v in selected.items()}})
         if not any(t['role']=='application_developer' for t in tasks):raise db.Conflict('Plan requires an application developer task')
         git=broker('/publish',{'run_id':str(record['id']),'story_id':str(story['id']),'revision':story['revision'],
-            'documentation_url':record['documentation_url'],'tasks':tasks,'product_package':True})
+            'documentation_url':record['documentation_url'],'tasks':tasks,'product_package':True,
+            'workspace_delivery':workspace_mode,'previous_release':record['git'].get('previous_release') if workspace_mode else None})
+        if workspace_mode:git=record['git']|git|{'pulls':record['git']['pulls']+git['pulls']}
         update(record['id'],status='PUBLISHED',git=git)
         record=get(story['id'])
     for pull in record['git']['pulls']:
@@ -168,7 +193,11 @@ def publish(story,record):
         if pull['pull_request_url'] not in item['description']['raw']:
             tracker.request('/api/v3/work_packages/'+str(pull['task_id']),'PATCH',{'lockVersion':item['lockVersion'],
                 'description':{'format':'markdown','raw':item['description']['raw']+'\n\nPR: '+pull['pull_request_url']+'\nПроверенный commit: '+pull['commit']}})
-    gate=broker('/gate',{'pulls':record['git']['pulls']})
+    gate_pulls=record['git']['pulls']
+    if (story.get('plan') or {}).get('development_mode')=='workspace':
+        final_epic=db.external(story['id'],f"r{story['revision']}:epic:{story['plan']['epics'][-1]['key']}")['external_id']
+        gate_pulls=[p for p in gate_pulls if p['epic_id']==final_epic]
+    gate=broker('/gate',{'pulls':gate_pulls})
     if gate['eligible']:
         update(record['id'],status='DEPLOY_READY')
 

@@ -84,7 +84,7 @@ def interaction_panel(id):
         st.caption('LLM backend: '+', '.join(story['usage']['backends']))
     a,b,c=st.columns(3)
     display_status=story['status'] if story['status'] in ['BLOCKED','FAILED','CANCELLED'] else ((story.get('product') or {}).get('status') or story['status'])
-    status_names={'CHECK_PENDING':'Ждёт тестов контейнера','DEPLOY_READY':'Ждёт развёртывания','WAITING_GITHUB':'Ждёт публикации PR','PUBLISHED':'Ждёт ревью и слияния PR','PLAN_REVIEW':'Ждёт одобрения плана','BLOCKED':'Ждёт ваших ответов' if story.get('questions') else ('Ждёт подготовки возможностей' if (story.get('feasibility') or {}).get('status') in ['NEEDS_PLATFORM','NEEDS_ANALYSIS'] else 'Требуется разбор замечаний'),'FAILED':'Ошибка','NEW':'Готовится к работе','IN_PROGRESS':'В работе','ACCEPTANCE':'Ждёт приёмки','DONE':'Завершено','CANCELLED':'Отменено'}
+    status_names={'CHECK_PENDING':'Ждёт тестов контейнера','DEPLOY_READY':'Ждёт развёртывания','WAITING_GITHUB':'Ждёт публикации PR','PUBLISHED':'Ждёт ревью и слияния PR','PLAN_REVIEW':'Ждёт одобрения плана','BLOCKED':'Ждёт ваших ответов' if story.get('questions') else ('Ждёт подготовки возможностей' if (story.get('feasibility') or {}).get('status') in ['NEEDS_PLATFORM','NEEDS_ANALYSIS'] else 'Требуется разбор замечаний'),'FAILED':'Ошибка','NEW':'Готовится к работе','IN_PROGRESS':'В работе','DEVELOPING_TASKS':'Команда выполняет задачи','ACCEPTANCE':'Ждёт приёмки','DONE':'Завершено','CANCELLED':'Отменено'}
     a.markdown('**Статус**')
     a.write(status_names.get(display_status,display_status))
     b.metric('LLM-вызовы',story['usage']['calls'])
@@ -138,7 +138,10 @@ def interaction_panel(id):
         st.info('Одобрение относится к показанной ревизии. На этапе 1 SQL ещё не выполняется.')
         if st.button('Одобрить план',type='primary'):
             if request('/stories/'+id+'/approve-plan','POST',{'revision':story['revision'],'plan_digest':story['plan_digest']}):st.rerun()
-    if story['status'] in ['BLOCKED','FAILED'] and story.get('error_type')!='BudgetExceeded' and not technical_block:
+    workspace_failed=any(t['state']=='FAILED' for t in (story.get('workspace') or {}).get('tasks',[]))
+    if workspace_failed:
+        st.error('Проверка изменений выявила ошибку. Подробности — ниже, в разделе «Разработка по задачам». Ответ заказчика не требуется; команде нужно исправить код.')
+    if story['status'] in ['BLOCKED','FAILED'] and story.get('error_type')!='BudgetExceeded' and not technical_block and not workspace_failed:
         with st.form('resume'):
             answers=st.text_area('Ответы и уточнения (создадут новую ревизию плана)',key=f'answers-{id}-{story["revision"]}')
             if st.form_submit_button('Продолжить'):
@@ -172,6 +175,28 @@ def interaction_panel(id):
                                 file_name=product['product_key']+'-'+product['version']+'.zip',mime='application/zip')
                         else:st.error('Пакет временно недоступен')
                     except httpx.TransportError:st.error('API временно недоступен')
+            workspace=story.get('workspace')
+            if workspace:
+                st.subheader('Разработка по задачам')
+                st.caption(f"Сохранено версий рабочей копии: {workspace['version']}. Этап: {workspace['epic_index']+1}.")
+                state_names={'PENDING':'Ожидает начала','RUNNING':'Выполняется','CHECK_PENDING':'Ждёт проверки изменений',
+                    'CHECKED':'Проверено, готовится к согласованию','WAITING_GITHUB':'Ждёт готовности публикации',
+                    'REVIEW':'Ждёт согласования изменений','MERGED':'Изменения согласованы','FAILED':'Требуется исправление'}
+                titles={task['key']:task['title'] for epic in (story.get('plan') or {}).get('epics',[]) for task in epic['tasks']}
+                for task in workspace['tasks']:
+                    with st.expander(titles.get(task['task_key'],task['task_key'])+' — '+state_names.get(task['state'],task['state']),expanded=task['state'] not in ['PENDING','MERGED']):
+                        st.link_button('Задача №'+str(task['task_id']),'http://localhost:8080/work_packages/'+str(task['task_id']))
+                        st.caption('Исполнитель: '+task['role']+f" · Сохранено действий: {task['sequence']}")
+                        if task.get('summary'):st.write(task['summary'])
+                        if task.get('checks'):
+                            checks=task['checks'];st.write('Проверки: '+('пройдены' if checks['passed'] else 'есть ошибки'))
+                            st.caption('Выполнено тестов: '+str(checks['tests_run'])+'. Это ещё не подтверждение всех бизнес-требований.')
+                            if checks.get('test_output'):
+                                with st.expander('Подробности проверки'):st.code(checks['test_output'])
+                        if task.get('git'):st.link_button('Открыть изменения для согласования',task['git']['pull_request_url'])
+                for release in workspace.get('milestones',[]):st.link_button('Согласовать выпуск этапа №'+str(release['epic_id']),release['pull_request_url'])
+                if product['status']=='DEVELOPING_TASKS':
+                    st.caption('Рабочая копия сохраняется после каждого изменения. Для проверок запустите ручной оператор; переход к зависимым задачам ждёт согласования изменений.')
             if product['status']=='CHECK_PENDING':
                 st.info('Пакет ждёт host-оператора: сборка и изолированные тесты. Оператор запускается отдельно от контейнеров команды.')
             needs_attention=product['status'] in ['ESCALATED','DEPLOY_FAILED']

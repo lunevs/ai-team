@@ -145,6 +145,32 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
                 card['current']='Нужно подготовить: '+pending['title'] if pending else 'Нужно проверить технические предпосылки плана'
             elif role=='pm':card['current']='Ждёт подготовки среды для планирования'
             else:card['current']='Ждёт выполнимого плана'
+    workspace=story.get('workspace') or {}
+    if workspace and not stopped:
+        rows=workspace['tasks'];by_key={row['task_key']:row for row in rows}
+        titles={task['key']:task['title'] for task in planned}
+        epics=(story.get('plan') or {}).get('epics',[])
+        current_keys={task['key'] for task in epics[workspace['epic_index']]['tasks']} if workspace['epic_index']<len(epics) else set()
+        for role,card in cards.items():
+            own=[row for row in rows if row['role']==role]
+            current=next((row for row in own if row['state'] not in ['PENDING','MERGED']),None)
+            if current:
+                title=titles.get(current['task_key'],current['task_key'])
+                label={'RUNNING':'Работает над задачей' if worker_active else 'Готовится продолжить',
+                    'CHECK_PENDING':'Ждёт проверки изменений','CHECKED':'Готовит изменения к согласованию',
+                    'WAITING_GITHUB':'Ждёт готовности публикации','REVIEW':'Ждёт согласования изменений','FAILED':'Требуется исправление'}
+                card['current']=label.get(current['state'],'Ожидает продолжения')+': '+title
+            else:
+                pending=next((row for row in own if row['state']=='PENDING'),None)
+                if pending:
+                    title=titles.get(pending['task_key'],pending['task_key'])
+                    spec=next((t for t in planned if t['key']==pending['task_key']),{})
+                    waiting=next((d for d in spec.get('depends_on',[]) if d in by_key and by_key[d]['state']!='MERGED'),None)
+                    if waiting:card['current']='Ждёт завершения задачи «'+titles.get(waiting,waiting)+'», затем: '+title
+                    else:card['current']=('Готовится к задаче: ' if pending['task_key'] in current_keys else 'Ждёт завершения предыдущего этапа: ')+title
+                elif own:
+                    title=titles.get(own[-1]['task_key'],own[-1]['task_key'])
+                    card['current']=('Выполнена задача: ' if own[-1]['task_key'] in closed_keys else 'Задача согласована; ждёт выпуска: ')+title
     return {'agents': list(cards.values()), 'tracker_available': tracker_available,
             'scope': 'story', 'revision': story['revision']}
 

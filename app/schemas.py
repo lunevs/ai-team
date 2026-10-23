@@ -54,7 +54,7 @@ class PlannedTask(StrictModel):
 class Epic(StrictModel):
     key: str = Field(pattern=r'^[a-z][a-z0-9_]{0,30}$')
     title: str = Field(min_length=5, max_length=200)
-    tasks: list[PlannedTask] = Field(min_length=1, max_length=50)
+    tasks: list[PlannedTask] = Field(min_length=1, max_length=51)
 
 class SAResult(StrictModel):
     architecture: str = Field(min_length=20, max_length=8000)

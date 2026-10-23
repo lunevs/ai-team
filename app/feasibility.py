@@ -58,7 +58,9 @@ def evaluate(story, pm, plan, assessment):
                      'task_keys':row.task_keys,'roles':sorted({tasks[k]['role'] for k in row.task_keys if k in tasks}),
                      'capability_ids':row.capability_ids,'verification':row.verification})
     required.update(explicit_capabilities(story['text']+'\n'+story.get('answers','')+'\n'+'\n'.join(pm['acceptance_criteria'])))
-    if len(plan['epics'])>profile['limits']['epics']:required.add('multi_epic')
+    if len(plan['epics'])>1:required.add('multi_epic')
+    if len(plan['epics'])>profile['limits']['epics']:issues.append('Число эпиков превышает технический размер одного плана.')
+    if plan.get('development_mode')=='workspace':required.add('incremental_workspace')
     gaps=[]
     for key in sorted(required):
         cap=capabilities.get(key)
