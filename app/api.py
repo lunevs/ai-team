@@ -95,6 +95,11 @@ def list_stories(user=Depends(current_user)):
     with db.connection() as conn:
         return conn.execute('SELECT id,text,status,revision,created_at FROM stories ORDER BY created_at DESC LIMIT 100').fetchall()
 
+@app.get('/capabilities')
+def capabilities(user=Depends(current_user)):
+    from app.capabilities import registry
+    return registry()
+
 @app.get('/stories/{id}')
 def get(id:uuid.UUID,user=Depends(current_user)):
     return public_story(require_story(id))
