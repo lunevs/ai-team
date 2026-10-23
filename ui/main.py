@@ -84,7 +84,7 @@ def interaction_panel(id):
         st.caption('LLM backend: '+', '.join(story['usage']['backends']))
     a,b,c=st.columns(3)
     display_status=story['status'] if story['status'] in ['BLOCKED','FAILED','CANCELLED'] else ((story.get('product') or {}).get('status') or story['status'])
-    status_names={'CHECK_PENDING':'Ждёт тестов контейнера','DEPLOY_READY':'Ждёт развёртывания','WAITING_GITHUB':'Ждёт публикации PR','PUBLISHED':'Ждёт ревью и слияния PR','PLAN_REVIEW':'Ждёт одобрения плана','BLOCKED':'Ждёт ваших ответов' if story.get('questions') else 'Требуется разбор замечаний','FAILED':'Ошибка','NEW':'Готовится к работе','IN_PROGRESS':'В работе','ACCEPTANCE':'Ждёт приёмки','DONE':'Завершено','CANCELLED':'Отменено'}
+    status_names={'CHECK_PENDING':'Ждёт тестов контейнера','DEPLOY_READY':'Ждёт развёртывания','WAITING_GITHUB':'Ждёт публикации PR','PUBLISHED':'Ждёт ревью и слияния PR','PLAN_REVIEW':'Ждёт одобрения плана','BLOCKED':'Ждёт ваших ответов' if story.get('questions') else ('Ждёт подготовки возможностей' if (story.get('feasibility') or {}).get('status') in ['NEEDS_PLATFORM','NEEDS_ANALYSIS'] else 'Требуется разбор замечаний'),'FAILED':'Ошибка','NEW':'Готовится к работе','IN_PROGRESS':'В работе','ACCEPTANCE':'Ждёт приёмки','DONE':'Завершено','CANCELLED':'Отменено'}
     a.markdown('**Статус**')
     a.write(status_names.get(display_status,display_status))
     b.metric('LLM-вызовы',story['usage']['calls'])
@@ -99,6 +99,28 @@ def interaction_panel(id):
     if story['questions']:
         st.subheader('Вопросы для уточнения')
         for question in story['questions']:st.write('• '+question)
+    feasibility=story.get('feasibility')
+    technical_block=bool(feasibility and feasibility['status']!='READY')
+    if feasibility:
+        st.subheader('Проверка возможностей команды')
+        if feasibility['status']=='READY':
+            st.caption('Технические предпосылки плана проверены. Выполнение требований ещё предстоит подтвердить при проверке результата.')
+        else:
+            st.write('Перед реализацией команде нужно подготовить среду или уточнить технический план. Это работа системного аналитика.')
+            for gap in feasibility['gaps']:
+                st.write('**'+gap['title']+'** — '+gap['reason'])
+            for issue in feasibility['analysis_issues']:st.write('• '+issue)
+            for task in feasibility.get('tasks',[]):st.link_button('Задача команды №'+str(task['task_id']),task['url'])
+            if story['status'] in ['BLOCKED','FAILED'] and not story['questions']:
+                st.caption('Дополнительные ответы заказчика сейчас не требуются. После подготовки возможностей команда сможет повторить анализ.')
+                if st.button('Повторить проверку возможностей'):
+                    if request('/stories/'+id+'/resume','POST',{}):st.rerun()
+        if feasibility.get('documentation_url'):st.link_button('Как будут проверяться ваши требования',feasibility['documentation_url'])
+        with st.expander('Критерии, задачи и способы проверки'):
+            for row in feasibility['criteria']:
+                st.write('**'+row['criterion']+'**')
+                st.write('Проверка: '+row['verification'])
+                st.caption('Задачи: '+', '.join(row['task_keys'])+' · Исполнители: '+', '.join(row['roles']))
     if story['pm']:
         st.subheader('Цель и критерии приёмки')
         st.write(story['pm']['goal'])
@@ -116,7 +138,7 @@ def interaction_panel(id):
         st.info('Одобрение относится к показанной ревизии. На этапе 1 SQL ещё не выполняется.')
         if st.button('Одобрить план',type='primary'):
             if request('/stories/'+id+'/approve-plan','POST',{'revision':story['revision'],'plan_digest':story['plan_digest']}):st.rerun()
-    if story['status'] in ['BLOCKED','FAILED'] and story.get('error_type')!='BudgetExceeded':
+    if story['status'] in ['BLOCKED','FAILED'] and story.get('error_type')!='BudgetExceeded' and not technical_block:
         with st.form('resume'):
             answers=st.text_area('Ответы и уточнения (создадут новую ревизию плана)',key=f'answers-{id}-{story["revision"]}')
             if st.form_submit_button('Продолжить'):

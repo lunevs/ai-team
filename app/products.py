@@ -35,6 +35,8 @@ def run(story_id):
     story=db.active(story_id);tracker.honor_remote_stop(story_id)
     if len(story['plan']['epics'])!=1:raise db.Conflict('Product profile requires one epic per version')
     if story['delivery_mode']!='product' or not story['approved']:raise db.Conflict('Product plan must be approved')
+    from app.feasibility import require_ready
+    require_ready(story)
     with db.connection() as conn:
         approved=conn.execute('SELECT 1 FROM approvals WHERE story_id=%s AND revision=%s AND plan_digest=%s',
             (story_id,story['revision'],story['plan_digest'])).fetchone()

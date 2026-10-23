@@ -84,7 +84,11 @@ class MockProvider:
     def generate_structured(self,role,prompt,schema):
         context=json.loads(prompt)
         from app.product_contract import Contribution,ProductSolution,ProductReview
-        if schema is Contribution:
+        from app.feasibility import PlanAssessment,CriterionCheck
+        if schema is PlanAssessment:
+            key=context['plan']['epics'][0]['tasks'][0]['key']
+            result=PlanAssessment(criteria=[CriterionCheck(criterion_index=i,capability_ids=['python_service','portable_package'],task_keys=[key],verification='Независимый HTTP тест результата и чистая установка пакета') for i,_ in enumerate(context['product']['acceptance_criteria'])])
+        elif schema is Contribution:
             result=Contribution(specification='Синтетическая проверка протокола поставки: результат 42 synthetic-check, независимая сверка, без загрузки внешних данных.',files={})
         elif schema is ProductSolution:
             from pathlib import Path
