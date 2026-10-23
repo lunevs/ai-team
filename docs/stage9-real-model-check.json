@@ -1,0 +1,20 @@
+{
+  "status": "passed",
+  "checks": [
+    "real_model_detects_wrong_value_with_evidence",
+    "real_model_dismisses_platform_file_false_positive"
+  ],
+  "usage": {
+    "calls": 2,
+    "tokens": 1503,
+    "estimated_cost_usd": 0.000297114,
+    "estimated_calls": 0,
+    "backends": [
+      "openrouter"
+    ],
+    "models": [
+      "deepseek/deepseek-v4.1-flash"
+    ]
+  },
+  "verified_date": "2026-10-24"
+}

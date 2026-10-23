@@ -1,0 +1,22 @@
+{
+  "status": "passed",
+  "migrations": [
+    "010_rework",
+    "011_repair_source_archive"
+  ],
+  "unit_tests": 113,
+  "postgres_integration_tests": 11,
+  "isolated_workflow_checks": 58,
+  "ui_repair_render_errors": 0,
+  "real_model_review_checks": 2,
+  "health": {
+    "status": "ok"
+  },
+  "user_story_unchanged": true,
+  "installed_profile_matches_sources": true,
+  "operator": "manual only",
+  "no_business_acceptance_performed": true,
+  "no_progress_guard_checked": true,
+  "source_archive_checked": true,
+  "obsolete_product_file_removal_checked": true
+}
