@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "migration": "009_workspaces",
+  "unit_tests": 104,
+  "postgres_integration_tests": 8,
+  "isolated_workflow_checks": 35,
+  "ui_render_errors": 0,
+  "health": {
+    "status": "ok"
+  },
+  "user_story_unchanged": true,
+  "operator": "manual only",
+  "workspace_publication": "waiting for release/370 PR integration",
+  "profile_digest": "4ef7b37988909e80140ce64893eca3204941e2a1bb04517fc41c612b07248603"
+}
