@@ -23,3 +23,10 @@ def test_metrics_accounting_and_bounded_dimensions(monkeypatch):
     with pytest.raises(HTTPException):authenticate('Bearer application-token')
     monkeypatch.delenv('TELEMETRY_METRICS_TOKEN')
     with pytest.raises(HTTPException):authenticate('Bearer ')
+
+
+def test_unlimited_budget_has_no_ratio_but_keeps_usage_metrics():
+    from app.metrics import render
+    import uuid
+    data={'stories':[],'calls':[],'qa':[],'events':[], 'budgets':[{'id':str(uuid.uuid4()),'backend':'openrouter','calls':20,'tokens':100000,'cost':2,'max_calls':None,'max_tokens':None,'max_cost_usd':None}]}
+    assert not any(line.startswith('ai_team_story_budget_ratio{') for line in render(data).splitlines())

@@ -47,3 +47,19 @@ def test_runtime_role_cannot_create_tables():
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
         with db.connection() as conn:
             conn.execute('CREATE TABLE runtime_must_not_create(id int)')
+
+
+def test_unlimited_story_keeps_reservations_beyond_old_cap():
+    row,_=db.create_story(payload(),'unlimited-'+str(uuid.uuid4()))
+    id=row['id']
+    try:
+        for _ in range(10):
+            db.reserve_call(id,'pm',10000,0.2)
+        assert db.usage(id)['calls']==10
+        assert db.usage(id)['tokens']==100000
+    finally:
+        with db.connection() as conn:
+            conn.execute('DELETE FROM llm_calls WHERE story_id=%s',(id,))
+            conn.execute('DELETE FROM events WHERE story_id=%s',(id,))
+            conn.execute('DELETE FROM jobs WHERE story_id=%s',(id,))
+            conn.execute('DELETE FROM stories WHERE id=%s',(id,))

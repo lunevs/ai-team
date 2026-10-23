@@ -83,7 +83,7 @@ def render(data):
         except ValueError:continue
         if item['backend'] not in BACKENDS:continue
         for dimension,key,limit in [('calls','calls','max_calls'),('tokens','tokens','max_tokens'),('cost','cost','max_cost_usd')]:
-            if item[limit]>0:emit('ai_team_story_budget_ratio',float(item[key])/float(item[limit]),story_id=story,backend=item['backend'],dimension=dimension)
+            if item[limit] is not None and item[limit]>0:emit('ai_team_story_budget_ratio',float(item[key])/float(item[limit]),story_id=story,backend=item['backend'],dimension=dimension)
     counts=Counter({r['result']:r['count'] for r in data['qa']})
     emit('ai_team_qa_attempts',counts['true'],result='passed');emit('ai_team_qa_attempts',counts['false'],result='failed')
     events={r['type']:r['count'] for r in data['events']}

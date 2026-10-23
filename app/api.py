@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from app.auth import current_user
 from app.schemas import StoryInput, Approval, Resume
 from app import db
+from app.status import waiting_reason
 from app.observability import log
 
 @asynccontextmanager
@@ -72,7 +73,7 @@ def public_story(row):
     with db.connection() as conn:
         links=conn.execute('SELECT key,external_id,url FROM external_ids WHERE story_id=%s ORDER BY key',(row['id'],)).fetchall()
     main=next((x['external_id'] for x in links if x['key']=='main'),None)
-    return {k:row[k] for k in ['id','text','delivery_mode','status','revision','pm','plan','plan_digest','approved','questions','trace_id','error_type','created_at','updated_at']} | {'product':public_product(get_product(row['id'],row['revision'])),'story_id':row['id'],'openproject_work_package_id':main,'links':links,'usage':db.usage(row['id']),'analytics':get_run(row['id'],row['revision']),'execution':get_execution(row['id'],row['revision'])}
+    return {k:row[k] for k in ['id','text','delivery_mode','max_calls','max_tokens','max_cost_usd','status','revision','pm','plan','plan_digest','approved','questions','trace_id','error_type','created_at','updated_at']} | {'waiting_reason':waiting_reason(row),'product':public_product(get_product(row['id'],row['revision'])),'story_id':row['id'],'openproject_work_package_id':main,'links':links,'usage':db.usage(row['id']),'analytics':get_run(row['id'],row['revision']),'execution':get_execution(row['id'],row['revision'])}
 
 @app.post('/stories',status_code=201)
 def create(data:StoryInput,response:Response,idempotency_key:str=Header(min_length=8,max_length=128),user=Depends(current_user)):
