@@ -6,6 +6,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from app.config import settings
+from app.portability import database_parameters
 
 class Conflict(Exception): pass
 class Cancelled(Exception): pass
@@ -13,7 +14,7 @@ class BudgetExceeded(Exception): pass
 
 @contextmanager
 def connection():
-    with psycopg.connect(settings.database_url, row_factory=dict_row, connect_timeout=5) as conn:
+    with psycopg.connect(**database_parameters(settings.database_url), row_factory=dict_row, connect_timeout=5) as conn:
         yield conn
 
 @contextmanager

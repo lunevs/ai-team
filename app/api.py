@@ -11,7 +11,7 @@ from app.observability import log
 async def lifespan(app):
     yield
 
-app=FastAPI(title='Bank AI Delivery Team',version='0.5.0',lifespan=lifespan)
+app=FastAPI(title='Bank AI Delivery Team',version='0.6.0',lifespan=lifespan)
 
 @app.middleware('http')
 async def trace_story_mutation(request,call_next):

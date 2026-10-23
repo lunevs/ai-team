@@ -66,6 +66,18 @@ class OpenRouterProvider:
     def tool_call(self,*args,**kwargs):
         raise CapabilityError('Model tool calling is not enabled; tools are deterministic adapters')
 
+class PrivateLLMStub:
+    """A configuration boundary, deliberately no network or fallback."""
+    def generate_structured(self,*args,**kwargs):raise CapabilityError('Private LLM adapter is not implemented')
+    def generate_text(self,*args,**kwargs):raise CapabilityError('Private LLM adapter is not implemented')
+    def tool_call(self,*args,**kwargs):raise CapabilityError('Private LLM adapter is not implemented')
+
+def provider_for(backend):
+    if backend=='mock':return MockProvider()
+    if backend=='openrouter':return OpenRouterProvider()
+    if backend=='private':return PrivateLLMStub()
+    raise CapabilityError('Unknown LLM backend')
+
 class MockProvider:
     def generate_structured(self,role,prompt,schema):
         context=json.loads(prompt)
@@ -112,13 +124,13 @@ def generate(story_id,role,schema,context,result_role=None):
         return _generate(story_id,role,schema,context,result_role)
 
 def _generate(story_id,role,schema,context,result_role=None):
+    provider=provider_for(settings.backend)
+    if isinstance(provider,PrivateLLMStub):raise CapabilityError('Private LLM adapter is not implemented')
     result_role=result_role or role
     story=db.active(story_id)
     with db.connection() as conn:
         cached=conn.execute('SELECT result FROM agent_results WHERE story_id=%s AND revision=%s AND role=%s',(story_id,story['revision'],result_role)).fetchone()
     if cached: return schema.model_validate(cached['result'])
-    provider=MockProvider() if settings.backend=='mock' else OpenRouterProvider() if settings.backend=='openrouter' else None
-    if provider is None: raise CapabilityError()
     prompt=json.dumps(context,ensure_ascii=False)
     # UTF-8 bytes provide a conservative input token estimate for the configured tariff.
     input_estimate=len(prompt.encode())+len(json.dumps(schema.model_json_schema()).encode())+1024
