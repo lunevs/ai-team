@@ -1,7 +1,7 @@
 """Validated LLM schemas for the trusted portable-product policy."""
 from pydantic import Field, model_validator
 from typing import Literal
-from app.schemas import StrictModel
+from app.schemas import StrictModel,ProductDefinition
 from app.product_policy import *
 
 class Contribution(StrictModel):
@@ -13,14 +13,8 @@ class Contribution(StrictModel):
         validate_sources(self.files)
         return self
 
-class ProductSolution(StrictModel):
-    title:str=Field(min_length=5,max_length=160)
-    kind:Literal['service','job']
-    output_type:Literal['application','dashboard','file','presentation','scalar']
-    needs_database:bool
-    architecture:str=Field(min_length=30,max_length=6000)
-    operating_notes:str=Field(min_length=30,max_length=5000)
-    files:dict[str,str]=Field(min_length=2,max_length=24)
+class ProductSolution(ProductDefinition):
+    files:dict[str,str]=Field(min_length=2,max_length=256)
 
     @model_validator(mode='after')
     def source_contract(self):
