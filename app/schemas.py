@@ -14,6 +14,14 @@ class Role(StrEnum):
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
+class ProductDefinition(StrictModel):
+    title: str = Field(min_length=5, max_length=160)
+    kind: Literal['service','job']
+    output_type: Literal['application','dashboard','file','presentation','scalar']
+    needs_database: bool
+    architecture: str = Field(min_length=30, max_length=6000)
+    operating_notes: str = Field(min_length=30, max_length=5000)
+
 class StoryInput(StrictModel):
     text: str = Field(min_length=20, max_length=8000)
     delivery_mode: Literal['credit_demo','product'] = 'credit_demo'
@@ -40,16 +48,19 @@ class PlannedTask(StrictModel):
     title: str = Field(min_length=5, max_length=200)
     role: Role
     acceptance_criteria: list[str] = Field(min_length=1, max_length=10)
-    depends_on: list[str] = Field(default_factory=list, max_length=20)
+    depends_on: list[str] = Field(default_factory=list, max_length=500)
+    kind: Literal['work','package'] = 'work'
 
 class Epic(StrictModel):
     key: str = Field(pattern=r'^[a-z][a-z0-9_]{0,30}$')
     title: str = Field(min_length=5, max_length=200)
-    tasks: list[PlannedTask] = Field(min_length=1, max_length=10)
+    tasks: list[PlannedTask] = Field(min_length=1, max_length=50)
 
 class SAResult(StrictModel):
     architecture: str = Field(min_length=20, max_length=8000)
-    epics: list[Epic] = Field(min_length=1, max_length=3)
+    epics: list[Epic] = Field(min_length=1, max_length=12)
+    product_definition: ProductDefinition | None = None
+    development_mode: Literal['legacy','workspace'] = 'legacy'
 
     @model_validator(mode='after')
     def validate_graph(self):
