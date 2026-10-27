@@ -190,6 +190,14 @@ def inspect_package(content):
 
 
 def installation(key,version,solution):
+    service=solution.kind=='service'
+    configuration='задайте свободный PRODUCT_PORT' if service else 'PRODUCT_PORT не используется одноразовой программой'
+    if solution.needs_database:configuration+='; задайте PRODUCT_DATABASE_URL с отдельной ролью БД'
+    start=('`docker compose up -d`. Gateway публикует сервис только на 127.0.0.1:PRODUCT_PORT.' if service else
+           '`docker compose up --abort-on-container-exit --exit-code-from app app`. Дождитесь кода 0. Контейнер app остаётся для извлечения результата; restart отключён. Порты и gateway не используются.')
+    result=('GET /health (HTTP 200) и GET /result на http://127.0.0.1:PRODUCT_PORT.' if service else
+            'Файл /data/result.json. После успешного завершения скопируйте `docker compose cp app:/data ./results`; затем при необходимости `docker compose rm -f app`.')
+    backup=('продуктовой БД (pg_dump) и volume /data' if solution.needs_database else 'volume /data; БД этому продукту не требуется')
     return f'''# {solution.title} — {version}
 
 Пакет самостоятельный: API, worker, OpenProject и BookStack команды ему не нужны.
@@ -207,19 +215,18 @@ Python 3.12, Docker Engine/Desktop и Compose v2; 1 CPU / 512 MB на прило
 ## Установка
 
 Из каталога products/{key}/: скопируйте `.env.example` в `.env` (не передавайте его в Git),
-задайте свободный PRODUCT_PORT и, если нужна БД, PRODUCT_DATABASE_URL с отдельной ролью.
+{configuration}.
 Сборка: `docker compose build`. Создайте volume командой `docker compose create`.
 Перед первым стартом инициализируйте права volume (образ уже собран):
 `docker compose run --rm --no-deps --user 0 --cap-add CHOWN --entrypoint /usr/bin/chown app 10001:10001 /data`.
 Проверка: `docker compose run --rm --no-deps app python -m unittest discover -s tests -v`.
-Запуск: `docker compose up -d`. Доверенный gateway публикует сервис только на 127.0.0.1:PRODUCT_PORT;
-для переноса на другой хост измените .env и скопируйте весь каталог.
-Для job используйте `docker compose run --rm app`; restart отключён.
+Запуск: {start}
+Для переноса на другой хост измените .env и скопируйте весь каталог.
 
 ## Результат и проверки
 
-Сервис: GET /health (HTTP 200) и GET /result на http://127.0.0.1:PRODUCT_PORT.
-Job: /data/result.json; файлы результата также сохраняются в /data.
+{result}
+Файлы результата сохраняются в /data.
 Получение файлов: `docker compose cp app:/data ./results` (сервис должен существовать).
 Формат результата: {solution.output_type}. Секреты, URL БД и данные не включаются в логи.
 Проверяйте содержание результата по критериям user story, одного healthcheck недостаточно.
@@ -230,7 +237,7 @@ Job: /data/result.json; файлы результата также сохран�
 
 Исходный код миграций/инициализации, если нужен продукту, находится в этом пакете.
 Новая версия поставляется отдельным проверенным пакетом; перед обновлением сделайте backup
-продуктовой БД (pg_dump) и volume /data, сохраните прежний пакет и приватный .env.
+{backup}; сохраните прежний пакет и приватный .env.
 Применяйте миграции в порядке, описанном выше; при несовместимых миграциях откат выполняется
 восстановлением БД и volume из копии и запуском прежнего образа.
 Остановка: `docker compose stop`; удаление контейнеров: `docker compose down`.

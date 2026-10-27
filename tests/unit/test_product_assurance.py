@@ -71,3 +71,37 @@ def test_file_receipt_contains_original_bytes_and_empty_file_fails():
         r=evaluate(c,'deploy',values)
         assert r['passed']==passed
         assert base64.b64decode(r['outputs'][0]['data'])==raw
+
+
+def test_explicit_unsupported_criterion_cannot_be_waived_by_passing_controls():
+    from app.product_assurance import digest
+    c=contract();c['qa']['unsupported_criteria']=[0]
+    c['digest']=digest({k:v for k,v in c.items() if k!='digest'})
+    r=evaluate(c,'check',collected({'total':30}))
+    assert not r['passed']
+    r['passed']=True
+    for check in r['checks']:check['passed']=True
+    assert not receipt_valid(c,r,'check')
+
+
+def test_unloaded_rows_block_even_with_a_correct_total():
+    from app.product_assurance import digest
+    c=contract()
+    c['qa']['checks'].append(c['qa']['checks'][0]|{'id':'rows','pointer':'/rows','operator':'min_count','expected':1})
+    c['digest']=digest({k:v for k,v in c.items() if k!='digest'})
+    assert not evaluate(c,'check',collected({'total':30,'rows':[]}))['passed']
+
+
+def test_xlsx_cells_and_pptx_slides_are_parsed_without_executing_content():
+    import io,zipfile
+    from scripts.product_verifier import decode
+    def zipped(files):
+        output=io.BytesIO()
+        with zipfile.ZipFile(output,'w') as z:
+            for name,value in files.items():z.writestr(name,value)
+        return output.getvalue()
+    sheet='<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row><c r="A1"><v>30</v></c></row></sheetData></worksheet>'
+    assert decode(zipped({'xl/worksheets/sheet1.xml':sheet}),'xlsx_file')=={'sheet1':{'A1':'30'}}
+    with pytest.raises(ValueError):decode(zipped({'xl/worksheets/sheet1.xml':sheet.replace('<v>30</v>','<f>10+20</f><v>30</v>')}),'xlsx_file')
+    slide='<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:t>Итого 30 RUB</a:t></p:sld>'
+    assert decode(zipped({'ppt/slides/slide1.xml':slide}),'pptx_file')=={'slides':['Итого 30 RUB']}

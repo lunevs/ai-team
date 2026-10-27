@@ -215,7 +215,7 @@ def interaction_panel(id):
                 if product['status']=='DEVELOPING_TASKS':
                     st.caption('Рабочая копия сохраняется после каждого изменения. Для проверок запустите ручной оператор; переход к зависимым задачам ждёт согласования изменений.')
             if product['status']=='CHECK_PENDING':
-                st.info('Пакет ждёт host-оператора: сборка и изолированные тесты. Оператор запускается отдельно от контейнеров команды.')
+                st.info('Команда готова проверить приложение, расчёты и результат по вашим требованиям. Для запуска проверки нужен ручной оператор.')
             needs_attention=product['status'] in ['ESCALATED','DEPLOY_FAILED']
             reviews=product.get('review') or {}
             if needs_attention:
@@ -224,7 +224,7 @@ def interaction_panel(id):
                 if (product.get('qa') or {}).get('passed'):
                     st.info('Приложение запускается и проходит базовые тесты. Это ещё не подтверждает выполнение ваших требований.')
             has_findings=False
-            for role,label in [('qa','Проверка выполнения требований'),('architecture','Проверка устройства и надёжности решения')]:
+            for role,label in [('qa','Проверка выполнения требований'),('architecture','Проверка устройства и надёжности решения'),('financial','Проверка расчётов и экономического смысла')]:
                 conclusion=reviews.get(role) or {}
                 findings=conclusion.get('findings') or []
                 if findings:
@@ -249,10 +249,37 @@ def interaction_panel(id):
             if release:st.link_button('Релиз в main',release['pull_request_url'])
             deployment=product.get('deployment') or {}
             if deployment.get('url'):
-                st.link_button('Открыть развёрнутый продукт',deployment['url']+'/result')
+                st.link_button('Открыть готовый результат',deployment['url'])
             if deployment.get('result'):
                 st.write('Результат продукта');st.json(deployment['result'])
-            if product['status']=='ACCEPTANCE' and not product['accepted']:
+            verification=product.get('verification')
+            if product['status']=='VERIFICATION_PLANNING':
+                st.info('Проверяющие готовят независимые проверки ваших требований и расчётов.')
+            if verification:
+                st.write('**Проверка результата по вашим требованиям**')
+                receipt=deployment.get('evidence') or (product.get('qa') or {}).get('evidence') or {}
+                by_criterion={}
+                for check in receipt.get('checks',[]):
+                    if check.get('criterion') is not None:by_criterion.setdefault(check['criterion'],[]).append(check)
+                for index,criterion in enumerate(verification['criteria']):
+                    checks=by_criterion.get(index,[])
+                    passed=bool(checks) and all(c['passed'] for c in checks)
+                    st.write(('✅ ' if passed else '⏳ ' if not checks else '❌ ')+criterion)
+                    for check in checks:
+                        if not check['passed']:
+                            st.caption(check['description']+' — '+check['reason'])
+                            st.write({'Получено':check.get('actual'),'Ожидалось':check.get('expected')})
+                if receipt and not receipt.get('passed'):
+                    st.warning('Результат пока не готов. Разработчик исправляет замечания; затем проверяющие повторят проверки. Уточнение требований нужно только при отдельном вопросе команды.')
+                st.caption('Числовые проверки используют заранее заданные контроли. Тестовые данные не подтверждают загрузку реальных данных.')
+            for output in product.get('outputs',[]):
+                with httpx.Client(timeout=30) as client:
+                    response=client.get(API+'/products/'+product['id']+'/outputs/'+output['id'],headers={'Authorization':'Bearer '+TOKEN})
+                if response.status_code==200:
+                    st.download_button('Скачать результат: '+output['path'],response.content,file_name=output['path'].rsplit('/',1)[-1],key='output-'+output['id'])
+            if product['status']=='ACCEPTANCE' and not product.get('ready_for_acceptance'):
+                st.warning('Для приёмки нужны актуальные доказательства результата. Команде требуется повторить независимые проверки этой версии.')
+            if product['status']=='ACCEPTANCE' and product.get('ready_for_acceptance') and not product['accepted']:
                 st.caption('Приёмка подтверждает бизнес-результат. Релиз в main требует отдельного review/CI/слияния.')
                 if st.button('Принять самостоятельный продукт',type='primary'):
                     if request('/stories/'+id+'/product/accept','POST',{'revision':story['revision'],'plan_digest':story['plan_digest']}):st.rerun()

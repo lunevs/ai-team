@@ -24,6 +24,7 @@ DEFINITIONS = {
     'xml_zip': (True, 'Ограниченный разбор XML/ZIP', 'airflow-postgres-v1: lxml без DTD/внешних сущностей; ZIP с проверкой путей/распакованного размера, до 200 файлов/32 MB.'),
     'interactive_browsing': (False, 'Исследование сайтов инструментами агента', 'У агентов нет инструмента браузера или поиска; URL в запросе сам по себе не прочитан.'),
     'incremental_workspace': (True, 'Доработка большого проекта по задачам', 'Сохраняемая рабочая копия, чтение/поиск и изменения отдельных файлов; проверки отдельным host-оператором; ветка/PR каждой задачи.'),
+    'independent_acceptance': (True, 'Независимые проверки результата', 'QA покрывает критерии, финансовый аналитик задаёт независимые контроли; фиксированный JSON и ограниченные JSON/CSV/XLSX/PPTX файлы. Нет SQL/browser/PDF/recalculation: unsupported_criteria блокируют приёмку. Формат PPTX можно проверить, инструмент создания не добавлен.'),
     'automated_rework': (True, 'Исправление подтверждённых замечаний', 'Дефекты с доказательствами, доработка по задачам, новые проверки и ревью; повторяющийся сбой передаётся аналитику, продуктовые развилки — PM.'),
 }
 
@@ -38,7 +39,7 @@ def registry():
                    'development': 'Последовательные действия над рабочей копией по задачам; один файл или операция за ответ. Два доверенных версионируемых профиля; новый источник требует согласования плана.'},
         'capabilities': {key: {'supported': supported, 'name': name, 'detail': detail}
                          for key, (supported, name, detail) in DEFINITIONS.items()},
-        'implementation_sha256': {name:hashlib.sha256(Path(__file__).parent.joinpath(name).read_bytes()).hexdigest() for name in ['product_policy.py','product_contract.py','products.py','feasibility.py','workflow.py','workspaces.py','workspace_policy.py','planning.py','rework.py','rework_contract.py','product_profiles.py','source_policy.py','product_templates/migrate.py','product_templates/source_client.py','../scripts/profile_operator.py','../scripts/workspace_operator.py']},
+        'implementation_sha256': {name:hashlib.sha256(Path(__file__).parent.joinpath(name).read_bytes()).hexdigest() for name in ['product_policy.py','product_assurance.py','../scripts/product_verifier.py','product_contract.py','products.py','feasibility.py','workflow.py','workspaces.py','workspace_policy.py','planning.py','rework.py','rework_contract.py','product_profiles.py','source_policy.py','product_templates/migrate.py','product_templates/source_client.py','../scripts/profile_operator.py','../scripts/workspace_operator.py']},
         'evidence': ['app/product_policy.py', 'app/product_contract.py', 'app/products.py',
                      'app/product_templates/runtime-requirements.lock', 'scripts/product_operator.py','scripts/profile_operator.py','docs/stage10-product-check.json'],
     }

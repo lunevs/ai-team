@@ -43,5 +43,6 @@ class AcceptanceCheck(StrictModel):
     tolerance:str='0'
 
 class AcceptancePlan(StrictModel):
-    checks:list[AcceptanceCheck]=Field(min_length=1,max_length=30)
+    checks:list[AcceptanceCheck]=Field(default_factory=list,max_length=30)
+    unsupported_criteria:list[int]=Field(default_factory=list,max_length=30)
     not_applicable_reason:str=Field(default='',max_length=1500)

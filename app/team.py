@@ -200,6 +200,10 @@ def product_activity(role, status, results, active, fallback):
         'designer':'Продумывает оформление результата','data_developer':'Продумывает хранение и подготовку данных',
         'application_developer':'Создаёт приложение','qa':'Проверяет приложение',
         'system_analyst':'Проверяет устройство и надёжность решения'}
+    if status=='VERIFICATION_PLANNING':
+        if role=='qa':return 'Готовит проверки ваших требований'
+        if role=='financial_analyst':return 'Готовит независимые проверки расчётов'
+        return 'Ждёт подготовки независимых проверок результата'
     if active:
         return activity.get(role,fallback)
     prepared={'pm':('pm','Цель и требования подготовлены'),
@@ -214,7 +218,7 @@ def product_activity(role, status, results, active, fallback):
         if role=='application_developer':return 'Приложение требует доработки после проверки'
         if role=='qa':return 'Проверка завершена; ждёт исправлений' if key in results else 'Ждёт исправлений для повторной проверки'
         if role=='system_analyst':return 'Проверка решения завершена; ждёт доработок' if key in results else 'Ждёт разбора замечаний к решению'
-    if key in results:
+    if key in results or any(str(k).startswith(key+'_') for k in results):
         if role=='application_developer' and status=='CHECK_PENDING':
             return summary+'; ждёт проверки'
         return summary

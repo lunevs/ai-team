@@ -170,5 +170,5 @@ def product_failure(story,record,findings,evidence,actual_failure=False):
              DO UPDATE SET state='PENDING',review=NULL,checks=NULL,repair_context=excluded.repair_context,attempt=workspace_tasks.attempt+1''',
                 (uuid.uuid4(),workspace['id'],key,repair_task,epic_id,Jsonb(spec),Jsonb(result|{'product_scope':scope})))
         c.execute('''UPDATE product_releases SET status='DEVELOPING_TASKS',review_round=review_round+1,
-           package=NULL,qa=NULL,review=NULL,accepted=false,deployment=NULL,operation_id=NULL,lease_until=NULL WHERE id=%s''',(record['id'],))
+           package=NULL,qa=NULL,review=NULL,verification=NULL,accepted=false,deployment=NULL,operation_id=NULL,lease_until=NULL WHERE id=%s''',(record['id'],))
         db.enqueue(c,story['id'])
