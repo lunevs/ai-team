@@ -10,7 +10,7 @@ import zipfile
 
 BASE_IMAGE='python:3.12.13-slim@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36'
 MAX_PACKAGE=2_000_000
-RESERVED={'product.json','Dockerfile','docker-compose.yml','.dockerignore','.env.example','runtime-requirements.lock','install.md','checks.json'}
+RESERVED={'airflow_entrypoint.py','source_client.py','data/profile_marker.md','Airflow.Dockerfile','airflow-requirements.lock','source_gateway.py','sources.json','database_init.py','database-init.sql','platform_migrate.py','product.json','Dockerfile','docker-compose.yml','.dockerignore','.env.example','runtime-requirements.lock','install.md','checks.json'}
 
 def safe_path(name):
     if not isinstance(name,str) or len(name)>180 or not re.fullmatch(r'[a-zA-Z0-9_./-]+',name):
@@ -106,6 +106,9 @@ def requirements():
 def build_package(solution,product_key,version,story_id,revision,contributions=None):
     if not re.fullmatch(r'p-[0-9a-f]{12}',product_key) or not re.fullmatch(r'1\.0\.[1-9][0-9]*',version):
         raise ValueError('Invalid product identity')
+    profile=getattr(solution,'runtime_profile','python-locked-v1')
+    sources=[v.model_dump() for v in getattr(solution,'sources',[])]
+    from app import product_profiles as profiles
     files={k:v.encode() for k,v in solution.files.items()}
     files['Dockerfile']=dockerfile().encode()
     files['runtime-requirements.lock']=requirements().encode()
@@ -114,11 +117,19 @@ def build_package(solution,product_key,version,story_id,revision,contributions=N
     files['.env.example']=b'PRODUCT_PORT=8600\nPRODUCT_DATABASE_URL=\n'
     files['architecture.md']=(solution.architecture+'\n\n'+json.dumps(contributions or {},ensure_ascii=False,indent=2)).encode()
     files['install.md']=installation(product_key,version,solution).encode()
+    if profile==profiles.PROFILE:
+        for name,text in profiles.owned_files(sources).items():files[name]=text.encode()
+        files['runtime-requirements.lock']=profiles.app_lock().encode()
+        files['docker-compose.yml']=(json.dumps(profiles.compose(product_key,version,sources),indent=2)+'\n').encode()
+        files['install.md']=profiles.install(product_key,version,solution).encode()
+        files['.env.example']=b'PRODUCT_PORT=8600\nPOSTGRES_ADMIN_PASSWORD=\nPRODUCT_DB_PASSWORD=\nAIRFLOW_DB_PASSWORD=\nAIRFLOW_JWT_SECRET=\nAIRFLOW_ADMIN_PASSWORD=\nAIRFLOW_FERNET_KEY=\n'
+    elif profile!='python-locked-v1':raise ValueError('Unknown runtime profile')
     metadata={'contract_version':1,'product_key':product_key,'version':version,'story_id':str(story_id),'revision':revision,
         'title':solution.title,'kind':solution.kind,'output_type':solution.output_type,'needs_database':solution.needs_database,
-        'runtime_profile':'python-locked-v1','health_path':'/health' if solution.kind=='service' else None,
+        'runtime_profile':profile,'health_path':'/health' if solution.kind=='service' else None,
         'result_path':'/result' if solution.kind=='service' else '/data/result.json',
         'files':{k:{'sha256':hashlib.sha256(v).hexdigest(),'size':len(v)} for k,v in sorted(files.items())}}
+    if profile==profiles.PROFILE:metadata['sources']=sources
     files['product.json']=(json.dumps(metadata,ensure_ascii=False,indent=2)+'\n').encode()
     output=io.BytesIO()
     with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as archive:
@@ -135,7 +146,7 @@ def inspect_package(content):
     if len(content)>MAX_PACKAGE:raise ValueError('Package too large')
     files={};total=0
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
-        if len(archive.infolist())>50:raise ValueError('Too many package entries')
+        if len(archive.infolist())>280:raise ValueError('Too many package entries')
         for item in archive.infolist():
             parts=item.filename.split('/')
             if len(parts)<3 or parts[0]!='products' or not re.fullmatch(r'p-[a-f0-9]{12}',parts[1]):raise ValueError('Invalid package root')
@@ -156,8 +167,20 @@ def inspect_package(content):
     if set(flat)!=(set(expected)|{'product.json'}):raise ValueError('Manifest file set changed')
     for name,entry in expected.items():
         if len(flat[name])!=entry['size'] or hashlib.sha256(flat[name]).hexdigest()!=entry['sha256']:raise ValueError('Package digest mismatch')
-    if flat['Dockerfile'].decode()!=dockerfile() or flat['runtime-requirements.lock'].decode()!=requirements():raise ValueError('Build policy changed')
-    if json.loads(flat['docker-compose.yml'])!=compose(root,metadata['version'],metadata['kind']):raise ValueError('Compose policy changed')
+    from app import product_profiles as profiles
+    profile=metadata.get('runtime_profile')
+    if profile==profiles.PROFILE:
+        if metadata['kind']!='service' or not metadata['needs_database']:raise ValueError('Invalid Airflow product')
+        trusted=profiles.owned_files(metadata['sources'])
+        for name,text in trusted.items():
+            if flat.get(name)!=text.encode():raise ValueError('Profile policy changed')
+        lock=profiles.app_lock();expected_compose=profiles.compose(root,metadata['version'],metadata['sources'])
+    elif profile=='python-locked-v1':
+        if any(name in flat for name in profiles.OWNED):raise ValueError('Unexpected profile files')
+        lock=requirements();expected_compose=compose(root,metadata['version'],metadata['kind'])
+    else:raise ValueError('Unknown runtime profile')
+    if flat['Dockerfile'].decode()!=dockerfile() or flat['runtime-requirements.lock'].decode()!=lock:raise ValueError('Build policy changed')
+    if json.loads(flat['docker-compose.yml'])!=expected_compose:raise ValueError('Compose policy changed')
     sources={k:v.decode() for k,v in flat.items() if k not in RESERVED}
     validate_sources(sources)
     if 'app.py' not in sources or not any(k.startswith('tests/test_') for k in sources):raise ValueError('Missing source/tests')

@@ -14,13 +14,36 @@ class Role(StrEnum):
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
+class PublicSource(StrictModel):
+    id: str = Field(min_length=1, max_length=40)
+    url: str = Field(min_length=10, max_length=2000)
+    format: Literal["csv","json","xml","zip","xlsx"]
+
+    @model_validator(mode="after")
+    def public_source(self):
+        from app.source_policy import source_definition
+        source_definition(self.model_dump())
+        return self
+
 class ProductDefinition(StrictModel):
+    runtime_profile: Literal["python-locked-v1","airflow-postgres-v1"] = "python-locked-v1"
+    sources: list[PublicSource] = Field(default_factory=list, max_length=12)
     title: str = Field(min_length=5, max_length=160)
     kind: Literal['service','job']
     output_type: Literal['application','dashboard','file','presentation','scalar']
     needs_database: bool
     architecture: str = Field(min_length=30, max_length=6000)
     operating_notes: str = Field(min_length=30, max_length=5000)
+
+    @model_validator(mode="after")
+    def profile_contract(self):
+        from app.source_policy import sources_policy
+        sources_policy([s.model_dump() for s in self.sources])
+        if self.runtime_profile == "python-locked-v1" and self.sources:
+            raise ValueError("External sources require airflow-postgres-v1")
+        if self.runtime_profile == "airflow-postgres-v1" and (not self.needs_database or self.kind != "service"):
+            raise ValueError("Airflow profile requires a service and product database")
+        return self
 
 class StoryInput(StrictModel):
     text: str = Field(min_length=20, max_length=8000)
