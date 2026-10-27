@@ -11,9 +11,11 @@ def digest(value):
 
 
 def validate_plan(plan,criteria_count):
-    if set(plan)!={'checks','not_applicable_reason'}:raise ValueError('Invalid verification plan')
+    if set(plan) not in ({'checks','not_applicable_reason'},{'checks','not_applicable_reason','unsupported_criteria'}):raise ValueError('Invalid verification plan')
     checks=plan['checks']
-    if not isinstance(checks,list) or not 1<=len(checks)<=30:raise ValueError('At least one independent check is required')
+    unsupported=plan.get('unsupported_criteria',[])
+    if not isinstance(unsupported,list) or len(set(unsupported))!=len(unsupported) or any(type(i) is not int or not 0<=i<criteria_count for i in unsupported):raise ValueError('Invalid unsupported criteria')
+    if not isinstance(checks,list) or len(checks)>30 or (not checks and not unsupported and len(plan['not_applicable_reason'])<20):raise ValueError('Independent checks or explicit unsupported criteria required')
     ids=set()
     for c in checks:
         if set(c)!={'id','criterion','description','basis','source','path','pointer','operator','expected','tolerance'}:raise ValueError('Invalid check fields')
@@ -43,7 +45,7 @@ def validate_plan(plan,criteria_count):
 def make_contract(record,story,qa,financial):
     criteria=story['pm']['acceptance_criteria']
     validate_plan(qa,len(criteria));validate_plan(financial,len(criteria))
-    if {c['criterion'] for c in qa['checks']}!=set(range(len(criteria))):raise ValueError('QA must cover every acceptance criterion')
+    if ({c['criterion'] for c in qa['checks']}|set(qa.get('unsupported_criteria',[])))!=set(range(len(criteria))):raise ValueError('QA must cover every acceptance criterion')
     if qa['not_applicable_reason']:raise ValueError('QA cannot waive acceptance criteria')
     if financial['not_applicable_reason'] and len(financial['not_applicable_reason'])<20:raise ValueError('Explain why no financial calculations apply')
     body={'version':1,'package_sha256':record['package']['sha256'],'revision':story['revision'],
@@ -57,7 +59,7 @@ def validate_contract(contract):
     if contract['digest']!=digest(body):raise ValueError('Verification contract changed')
     count=len(contract['criteria'])
     validate_plan(contract['qa'],count);validate_plan(contract['financial_analyst'],count)
-    if {c['criterion'] for c in contract['qa']['checks']}!=set(range(count)):raise ValueError('Incomplete criteria coverage')
+    if ({c['criterion'] for c in contract['qa']['checks']}|set(contract['qa'].get('unsupported_criteria',[])))!=set(range(count)):raise ValueError('Incomplete criteria coverage')
     return contract
 
 
@@ -97,6 +99,7 @@ def compare(actual,check):
 def receipt_valid(contract,receipt,phase):
     try:
         validate_contract(contract)
+        if any(contract[role].get('unsupported_criteria') for role in ('qa','financial_analyst')):return False
         if set(receipt)!={'contract_digest','package_sha256','phase','checks','outputs','passed'}:return False
         if receipt['contract_digest']!=contract['digest'] or receipt['package_sha256']!=contract['package_sha256'] or receipt['phase']!=phase:return False
         expected={(role,c['id']) for role in ('qa','financial_analyst') for c in contract[role]['checks']}|{('platform','result')}

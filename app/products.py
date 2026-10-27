@@ -4,12 +4,12 @@ import json
 import uuid
 from psycopg.types.json import Jsonb
 from app import db
-from app.product_contract import Contribution, ProductSolution, ProductReview, build_package, inspect_package
+from app.product_contract import Contribution, ProductSolution, ProductReview, AcceptancePlan, build_package, inspect_package
 from app.providers import generate
 from app.storage import store, read_artifact
 from app.integrations import tracker, knowledge, sync_status
 
-FIELDS={'status','specification','package','qa','review','git','documentation_url','deployment','accepted'}
+FIELDS={'status','specification','package','qa','review','git','documentation_url','deployment','accepted','verification'}
 
 def get(story_id,revision=None):
     with db.connection() as conn:
@@ -42,8 +42,8 @@ def run(story_id):
         approved=conn.execute('SELECT 1 FROM approvals WHERE story_id=%s AND revision=%s AND plan_digest=%s',
             (story_id,story['revision'],story['plan_digest'])).fetchone()
         if not approved:raise db.Conflict('Plan digest not approved')
-        conn.execute('''INSERT INTO product_releases(id,story_id,revision,product_key,version)
-            VALUES(%s,%s,%s,%s,%s) ON CONFLICT(story_id,revision) DO NOTHING''',
+        conn.execute('''INSERT INTO product_releases(id,story_id,revision,product_key,version,assurance_version)
+            VALUES(%s,%s,%s,%s,%s,1) ON CONFLICT(story_id,revision) DO NOTHING''',
             (uuid.uuid4(),story_id,story['revision'],'p-'+uuid.UUID(str(story_id)).hex[:12],'1.0.'+str(story['revision'])))
     record=get(story_id)
     if story['status']=='PLAN_REVIEW':sync_status(story_id,'IN_PROGRESS')
@@ -64,8 +64,10 @@ def run(story_id):
         page=knowledge.ensure_page(story_id,f"r{story['revision']}:product",solution.title,
             '# Продукт после выполнения задач\n\n'+solution.architecture+'\n\n'+solution.operating_notes+
             '\n\nПроверенные задачи и релизы:\n```json\n'+json.dumps(workspace['git'],ensure_ascii=False,indent=2)+'\n```')
-        update(record['id'],status='CHECK_PENDING',specification=solution.model_dump()|{'contributions':contributions},
+        update(record['id'],status='VERIFICATION_PLANNING',specification=solution.model_dump()|{'contributions':contributions},
             package=manifest,documentation_url=page,git=workspace['git'])
+        from app.workspaces import schedule
+        schedule(story_id)
         return
     if record['status']=='DEVELOPING':
         context={'story':story['text'],'answers':story['answers'],'plan':story['plan'],
@@ -82,7 +84,7 @@ def run(story_id):
                 raise db.Conflict('Data developer sources must stay in data/ or migrations/')
             contributions[role]=contribution.model_dump()
         solution=generate(story_id,'application_developer',ProductSolution,context|{'contributions':contributions,
-            'instruction':'Создай полноценные исходники самостоятельного продукта и независимые unittest-тесты. Включи app.py, tests/test_product.py и нужные модули/миграции. Разрешены stdlib и библиотеки из доверенного lock: httpx, psycopg, pandas, fastapi, streamlit. Предпочти компактный код stdlib. service: app.py запускает HTTP на 0.0.0.0:8000, GET /health и GET /result возвращают JSON или результат; job: app.py завершается с кодом 0 и пишет /data/result.json. Не запускай сервер при импорте. Результаты файлов в /data, БД только DATABASE_URL, Unit-тесты работают без сети; при needs_database=true smoke получает пустую изолированную PostgreSQL через DATABASE_URL, приложение идемпотентно инициализирует схемы. Внешняя сеть закрыта. Никогда не читай окружение/файлы команды. Dockerfile/Compose/install.md будут сгенерированы платформой; не включай их в files. В operating_notes опиши реальные миграции, получение результата и backup. До 6 файлов, код до 10000 символов.'},result_role='product_solution')
+            'instruction':'Создай полноценные исходники самостоятельного продукта и независимые unittest-тесты. Включи app.py, tests/test_product.py и нужные модули/миграции. Разрешены stdlib и библиотеки из доверенного lock: httpx, psycopg, pandas, fastapi, streamlit. Предпочти компактный код stdlib. service: app.py запускает HTTP на 0.0.0.0:8000, GET /health и GET /result возвращают JSON или результат; job: app.py завершается с кодом 0 и пишет /data/result.json. Не запускай сервер при импорте. Для dashboard /result возвращает charts: [{series: [{values: [числа]}]}] с фактическими данными, UI на /. Результаты файлов в /data, БД только DATABASE_URL, Unit-тесты работают без сети; при needs_database=true smoke получает пустую изолированную PostgreSQL через DATABASE_URL, приложение идемпотентно инициализирует схемы. Внешняя сеть закрыта. Никогда не читай окружение/файлы команды. Dockerfile/Compose/install.md будут сгенерированы платформой; не включай их в files. В operating_notes опиши реальные миграции, получение результата и backup. До 6 файлов, код до 10000 символов.'},result_role='product_solution')
         # The application developer integrates data migrations into the final complete file set.
         for contribution in contributions.values():
             for name,content in contribution['files'].items():
@@ -95,36 +97,63 @@ def run(story_id):
         page=knowledge.ensure_page(story_id,f"r{story['revision']}:product",solution.title,
             '# Самостоятельный продукт\n\n'+solution.architecture+'\n\n## Эксплуатация\n'+solution.operating_notes+
             '\n\n## Паспорт поставки\n```json\n'+json.dumps(metadata,ensure_ascii=False,indent=2)+'\n```')
-        update(record['id'],status='CHECK_PENDING',specification=solution.model_dump()|{'contributions':contributions},package=manifest,documentation_url=page)
+        update(record['id'],status='VERIFICATION_PLANNING',specification=solution.model_dump()|{'contributions':contributions},package=manifest,documentation_url=page)
         with db.connection() as conn:db.event(conn,story,'product.packaged',{'product_key':record['product_key'],'sha256':manifest['sha256']},f"{record['id']}:packaged")
+        from app.workspaces import schedule
+        schedule(story_id)
+        return
+    if record['status']=='VERIFICATION_PLANNING':
+        from app.product_assurance import make_contract
+        context={'story':story['text'],'answers':story['answers'],'criteria':story['pm']['acceptance_criteria'],
+                 'architecture':record['specification']['architecture'],'output_type':record['specification']['output_type'],
+                 'sources':record['specification'].get('sources',[]),
+                 'instruction': 'До просмотра реализации задай независимые исполнимые проверки. Каждый criterion — индекс критерия с нуля. QA обязан покрыть все критерии. Доступны только JSON /result, файлы JSON/CSV/XLSX/PPTX в /data; pointer — JSON Pointer; XLSX /sheet1/A1; CSV массив строк; PPTX /slides массив текстов слайдов. Формулы Excel без независимого пересчёта не поддерживаются. number сравнивает Decimal с tolerance, equals строгое равенство, min_count требует положительное число строк, nonempty не заменяет проверку расчёта. basis объясняет независимый источник ожидаемого значения: требования, заранее рассчитанный пример, утверждённый контроль. Не выдумывай ожидаемые числа для неизвестных реальных данных, не подменяй критерий запуском или наличием поля. Для невыполнимых этим протоколом критериев или неизвестных независимых ожидаемых значений укажи индексы в unsupported_criteria: они обязательно блокируют приёмку. Не подменяй их упрощённой проверкой. Проверенные и unsupported критерии QA вместе покрывают все критерии. Для финансовых расчётов нужны числовые контроли, граничные случаи, единицы. Если их нет, финансовый аналитик объясняет not_applicable_reason и проверяет реальный пользовательский результат. QA not_applicable_reason оставляет пустым.'}
+        suffix=record['package']['sha256'][:16]+'_'+str(record['review_round'])
+        qa=generate(story_id,'qa',AcceptancePlan,context,result_role='acceptance_plan_qa_'+suffix)
+        financial=generate(story_id,'financial_analyst',AcceptancePlan,context,result_role='acceptance_plan_financial_'+suffix)
+        contract=make_contract(record,story,qa.model_dump(),financial.model_dump())
+        knowledge.ensure_page(story_id,f"r{story['revision']}:verification:{suffix}",'Независимые проверки результата',
+            '# Проверки пользовательских требований\n\n'+json.dumps(contract,ensure_ascii=False,indent=2))
+        update(record['id'],verification=contract,status='CHECK_PENDING')
         return
     if workspace_mode and record['status']=='REPAIR_PENDING':
         from app.rework import product_failure
         finding={'summary':'Итоговый пакет не прошёл проверку','criterion':'; '.join(story['pm']['acceptance_criteria'])[:2000],
-            'evidence':json.dumps(record['qa'],ensure_ascii=False)[-6000:],'severity':'major','verification':'Повторить тесты и независимые ревью полного пакета'}
-        product_failure(story,record,[finding],{'checks':record['qa']},actual_failure=True);return
+            'evidence':json.dumps(record.get('deployment') if (record.get('deployment') or {}).get('error_type')=='EvidenceFailed' else record['qa'],ensure_ascii=False)[-6000:],'severity':'major','verification':'Повторить тесты и независимые ревью полного пакета'}
+        product_failure(story,record,[finding],{'verification':record.get('verification'),'checks':record['qa']},actual_failure=True);return
     if record['status']=='CHECKED':
         # Review code once; repeated full planning/design/data documents can exhaust
         # conservative input reservations even when actual usage is well below budget.
         source={k:v for k,v in record['specification'].items() if k!='contributions'}
+        _,full_package=inspect_package(package_bytes(record))
+        source=source|{'full_package':{name:content.decode() for name,content in full_package.items()}}
         business=record['specification'].get('contributions',{}).get('financial_analyst',{}).get('specification','')
-        qa=generate(story_id,'qa',ProductReview,{'story':story['text'],'answers':story['answers'],'plan':story['plan'],'package_manifest':record['package'],'platform_files':['Dockerfile','docker-compose.yml','install.md','runtime-requirements.lock'],'solution':source,'business_rules':business,'checks':record['qa'],
-            'instruction':'Независимо оцени соответствие исходников критериям, адекватность тестов, экономические и граничные случаи. Реальный оператор выполнил тесты; не считай smoke достаточным для бизнес-приёмки. approved=false при ошибках или неподтверждённых требованиях.'},result_role=('product_qa_'+str(record['review_round'])+'_'+record['package']['sha256'][:16]) if workspace_mode else 'product_qa')
-        review=generate(story_id,'system_analyst',ProductReview,{'story':story['text'],'answers':story['answers'],'plan':story['plan'],'platform_files':['Dockerfile','docker-compose.yml','install.md','runtime-requirements.lock'],'solution':source,'checks':record['qa'],'qa':qa.model_dump(),
-            'instruction':'Проверь архитектуру, безопасность, самостоятельность, миграции и исходники. Не одобряй при серьёзных замечаниях; GitHub review остаётся отдельным.'},result_role=('product_review_'+str(record['review_round'])+'_'+record['package']['sha256'][:16]) if workspace_mode else 'product_review')
-        update(record['id'],review={'qa':qa.model_dump(),'architecture':review.model_dump()},status='READY_TO_PUBLISH' if qa.approved and review.approved else 'ESCALATED')
-        if not qa.approved or not review.approved:
+        qa=generate(story_id,'qa',ProductReview,{'story':story['text'],'answers':story['answers'],'plan':story['plan'],'package_manifest':record['package'],'platform_files':['Dockerfile','docker-compose.yml','install.md','runtime-requirements.lock'],'solution':source,'business_rules':business,'verification':record.get('verification'),'checks':record['qa'],
+            'instruction':'Независимо оцени соответствие исходников критериям, адекватность тестов, экономические и граничные случаи. В solution.full_package даны ВСЕ файлы финального пакета, включая Dockerfile и install.md: проверяй их содержимое, не заявляй отсутствие по списку авторских files. Сверь КАЖДЫЙ критерий с verification и фактическими evidence. Подмена критерия числом 42/nonempty, неподтверждённая интеграция, неизвестное происхождение данных или неполная проверка означают approved=false. Реальный оператор выполнил тесты; не считай smoke достаточным для бизнес-приёмки. approved=false при ошибках или неподтверждённых требованиях.'},result_role='product_qa_'+str(record['review_round'])+'_'+record['package']['sha256'][:16]+'_'+(record.get('verification') or {}).get('digest','legacy')[:16])
+        review=generate(story_id,'system_analyst',ProductReview,{'story':story['text'],'answers':story['answers'],'plan':story['plan'],'platform_files':['Dockerfile','docker-compose.yml','install.md','runtime-requirements.lock'],'solution':source,'verification':record.get('verification'),'checks':record['qa'],'qa':qa.model_dump(),
+            'instruction':'Проверь архитектуру, безопасность, самостоятельность, зависимости, миграции и конфигурацию ВСЕГО solution.full_package. Dockerfile и install.md добавляет платформа, они представлены полностью. Не одобряй при серьёзных замечаниях; GitHub review остаётся отдельным.'},result_role='product_review_'+str(record['review_round'])+'_'+record['package']['sha256'][:16]+'_'+(record.get('verification') or {}).get('digest','legacy')[:16])
+        financial=generate(story_id,'financial_analyst',ProductReview,{'story':story['text'],'answers':story['answers'],'solution':source,
+            'criteria':story['pm']['acceptance_criteria'],'verification':record.get('verification'),'checks':record['qa'],
+            'instruction':'Независимо проверь экономический смысл, единицы и итоговые цифры. Наличие значений и запуск не доказывают расчёт. Если контроль не независим, отсутствует, данные пусты или требование не проверено — approved=false и конкретные замечания. Не заявляй загрузку реальных данных по синтетическому примеру.'},
+            result_role='product_financial_'+str(record['review_round'])+'_'+record['package']['sha256'][:16]+'_'+(record.get('verification') or {}).get('digest','legacy')[:16])
+        approved=qa.approved and review.approved and financial.approved
+        if record.get('assurance_version')==1:
+            from app.product_assurance import receipt_valid
+            approved=approved and receipt_valid(record['verification'],(record['qa'] or {}).get('evidence') or {},'check')
+        update(record['id'],review={'qa':qa.model_dump(),'architecture':review.model_dump(),'financial':financial.model_dump(),
+            'contract_digest':(record.get('verification') or {}).get('digest')},status='READY_TO_PUBLISH' if approved else 'ESCALATED')
+        if not approved:
             if workspace_mode:
                 from app.rework import product_failure
                 findings=[{'summary':('Замечание проверяющего: '+f)[:1000],'criterion':'; '.join(story['pm']['acceptance_criteria'])[:2000],
-                    'evidence':('Замечание: '+f)[:6000],'severity':'major','verification':'Повторить независимое ревью исходников и полного пакета'} for r in [qa,review] for f in r.findings]
+                    'evidence':('Замечание: '+f)[:6000],'severity':'major','verification':'Повторить независимое ревью исходников и полного пакета'} for r in [qa,review,financial] for f in r.findings]
                 if not findings:findings=[{'summary':'Проверяющий не подтвердил готовность','criterion':'; '.join(story['pm']['acceptance_criteria'])[:2000],'evidence':'Отрицательное ревью без пояснений','severity':'major','verification':'Повторить проверку с конкретными доказательствами'}]
                 product_failure(story,record,findings,{'qa':qa.model_dump(),'architecture':review.model_dump()});return
             sync_status(story_id,'BLOCKED')
-        if workspace_mode and qa.approved and review.approved:
+        if workspace_mode and approved:
             from app.rework import resolved
             from app.workspace_policy import source_digest
-            resolved(story,'product_'+str(record['id']),{'source_digest':source_digest(source['files']),'package_sha256':record['package']['sha256'],'checks':record['qa'],'qa':qa.model_dump(),'review':review.model_dump()})
+            resolved(story,'product_'+str(record['id']),{'source_digest':source_digest(source['files']),'package_sha256':record['package']['sha256'],'verification':record.get('verification'),'checks':record['qa'],'qa':qa.model_dump(),'review':review.model_dump()})
         record=get(story_id)
     if record['status'] in {'READY_TO_PUBLISH','WAITING_GITHUB','PUBLISHED'}:
         publish(story,record)
@@ -185,7 +214,7 @@ def publish(story,record):
                     # Distinct task documentation retains per-task traceability without overwriting the package.
                     report={'task':task,'product':metadata['product_key'],'package_sha256':record['package']['sha256'],
                         'contribution':record['specification'].get('contributions',{}).get(task['role']),
-                        'checks':record['qa'],'reviews':record['review']}
+                        'verification':record.get('verification'),'checks':record['qa'],'reviews':record['review']}
                     selected={prefix+f"task-{task_id}.json":json.dumps(report,ensure_ascii=False,indent=2).encode()}
                     if task['role']=='data_developer':
                         for name in (record['specification'].get('contributions',{}).get('data_developer') or {}).get('files',{}):
@@ -235,4 +264,12 @@ def publish(story,record):
 
 def public(record):
     if not record:return None
-    return {k:record[k] for k in ['id','story_id','product_key','version','status','package','qa','review','git','documentation_url','deployment','accepted','created_at','updated_at']}
+    result={k:record[k] for k in ['id','story_id','product_key','version','status','package','qa','review','git','documentation_url','deployment','accepted','created_at','updated_at']}
+
+    if record.get('assurance_version')==1:
+        from app.product_assurance import ready
+        result.update(verification=record.get('verification'),ready_for_acceptance=ready(record))
+        with db.connection() as conn:
+            result['outputs']=conn.execute('SELECT o.id,o.path,o.sha256 FROM product_outputs o JOIN product_evidence e ON e.operation_id=o.operation_id WHERE o.release_id=%s AND e.operation_id=%s',
+                (record['id'],(record.get('deployment') or {}).get('operation_id'))).fetchall()
+    return result

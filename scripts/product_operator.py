@@ -184,7 +184,7 @@ def check_package(content,operation):
                     time.sleep(0.5)
             report['health_passed']=True
             from scripts.product_verifier import verify
-            verify(sys.modules[__name__],name,operation,report)
+            verify(sys.modules[__name__],name,operation,report,metadata['kind'])
             report['passed']=True
     except OperationFailed as exc:report['error_type']=exc.kind
     except (ValueError,KeyError,TypeError):report['error_type']='PolicyRejected'
@@ -292,7 +292,12 @@ def deploy_package(content,operation):
                 else:
                     port=free_port();gateway(proxy,name,port)
             from scripts.product_verifier import verify
-            verify(sys.modules[__name__],name,operation,report)
+            if metadata['kind']=='job':
+                job_volume=next(v['Name'] for v in previous['Mounts'] if v['Destination']=='/data')
+                command(['docker',*restricted(image,name=name+'-verification',volume=job_volume,detach=True),'python','-c','import time;time.sleep(60)'],timeout=20)
+            try:verify(sys.modules[__name__],name if metadata['kind']=='service' else name+'-verification',operation,report,metadata['kind'])
+            finally:
+                if metadata['kind']=='job':remove_container(name+'-verification')
             report.update(passed=True,health_passed=True,port=port);return report
         if metadata['needs_database']:
             # Database migrations are not safely reversible generically: keep the running version.
@@ -350,7 +355,7 @@ def deploy_package(content,operation):
         from scripts.product_verifier import verify
         if metadata['kind']=='job':
             command(['docker',*restricted(image,name=name+'-verification',network='none',volume=volume,detach=True),'python','-c','import time;time.sleep(60)'],timeout=20)
-        try:verify(sys.modules[__name__],name if metadata['kind']=='service' else name+'-verification',operation,report)
+        try:verify(sys.modules[__name__],name if metadata['kind']=='service' else name+'-verification',operation,report,metadata['kind'])
         finally:
             if metadata['kind']=='job':remove_container(name+'-verification')
         report.update(passed=True,health_passed=True,port=port)
@@ -361,6 +366,7 @@ def deploy_package(content,operation):
         if previous:
             docker('rename',old,name);docker('start',name)
             if port:gateway(proxy,name,port)
+        else:remove_container(proxy)
     return report
 
 

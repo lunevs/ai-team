@@ -17,7 +17,7 @@ for source,path in request:
  key=source+':'+path
  try:
   if source=='result':
-   if pathlib.Path('/data/result.json').is_file():raw=pathlib.Path('/data/result.json').read_bytes()[:65537]
+   if sys.argv[2]=='job':raw=pathlib.Path('/data/result.json').read_bytes()[:65537]
    else:
     opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),type('NoRedirect',(urllib.request.HTTPRedirectHandler,),{'redirect_request':lambda *a:None})())
     with opener.open('http://127.0.0.1:8000/result',timeout=5) as response:raw=response.read(65537)
@@ -88,6 +88,9 @@ def evaluate(contract,phase,collected):
             except Exception:actual=None;passed=False;reason='Не удалось получить или прочитать результат проверки'
             checks.append({'role':role,'id':c['id'],'criterion':c['criterion'],'description':c['description'],'passed':passed,
                            'actual':actual,'expected':c['expected'],'reason':reason})
+    for role in ('qa','financial_analyst'):
+        for index in contract[role].get('unsupported_criteria',[]):
+            checks.append({'role':role,'id':'unsupported_'+str(index),'criterion':index,'description':'Требование пока не имеет независимой исполнимой проверки','passed':False,'actual':None,'expected':contract['criteria'][index],'reason':'Аналитику требуется выбрать способ проверки или расширить инструмент; запуск приложения не подтверждает требование'})
     paths={c['path'] for role in ('qa','financial_analyst') for c in contract[role]['checks'] if c['source']!='result'}
     for path in sorted(paths):
         candidates=[v for k,v in collected.items() if k.endswith(':'+path)]
@@ -100,7 +103,7 @@ def evaluate(contract,phase,collected):
     return {'contract_digest':contract['digest'],'package_sha256':contract['package_sha256'],'phase':phase,'checks':checks,'outputs':outputs,'passed':passed}
 
 
-def verify(host,name,operation,report):
+def verify(host,name,operation,report,kind='service'):
     contract=operation.get('verification')
     if not contract:
         if operation.get('assurance_version')==1:raise host.OperationFailed('PolicyRejected')
@@ -108,7 +111,7 @@ def verify(host,name,operation,report):
     validate_contract(contract)
     if contract['package_sha256']!=operation['package']['sha256']:raise host.OperationFailed('PolicyRejected')
     requests=sorted({('result','')}|{(c['source'],c['path']) for role in ('qa','financial_analyst') for c in contract[role]['checks']})
-    response=host.docker('exec',name,'python','-c',COLLECTOR,json.dumps(requests),check=False,timeout=20)
+    response=host.docker('exec',name,'python','-c',COLLECTOR,json.dumps(requests),kind,check=False,timeout=20)
     try:receipt=evaluate(contract,operation['operation'],json.loads(response.stdout))
     except Exception:raise host.OperationFailed('PolicyRejected')
     report['evidence']=receipt

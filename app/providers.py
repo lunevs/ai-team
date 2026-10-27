@@ -83,12 +83,14 @@ def provider_for(backend):
 class MockProvider:
     def generate_structured(self,role,prompt,schema):
         context=json.loads(prompt)
-        from app.product_contract import Contribution,ProductSolution,ProductReview
+        from app.product_contract import Contribution,ProductSolution,ProductReview,AcceptancePlan
         from app.feasibility import PlanAssessment,CriterionCheck
         from app.workspace_contract import WorkspaceAction
         from app.schemas import ProductDefinition
         from app.rework_contract import SourceReview,Triage
-        if schema is SourceReview:
+        if schema is AcceptancePlan:
+            result=AcceptancePlan(checks=[{'id':'criterion_'+str(i),'criterion':i,'description':'Техническая fixture: независимый контроль числа 42','basis':'Только синтетическая fixture протокола; не подтверждает реальную банковскую задачу','source':'result','path':'','pointer':'/value','operator':'number','expected':42,'tolerance':'0'} for i,_ in enumerate(context['criteria'])])
+        elif schema is SourceReview:
             phantom='[stage9' in context['story'] and context['task']['key']=='service' and context['attempt']==1 and role=='qa'
             result=SourceReview(approved=not phantom,findings=[{'summary':'В рабочих исходниках отсутствует Dockerfile','criterion':'Продукт должен устанавливаться самостоятельно','evidence':'Dockerfile не представлен в files','severity':'minor','verification':'Проверить состав файлов пакета после упаковки'}] if phantom else [])
         elif schema is Triage:
