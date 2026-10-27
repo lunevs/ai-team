@@ -1,10 +1,16 @@
 """Streamlit обращается только к FastAPI; credentials не отправляются в браузер."""
 import os
+import sys
+from pathlib import Path
 import uuid
 import html
 from datetime import datetime, timezone
 import httpx
 import streamlit as st
+
+# The Streamlit console entry point exposes the script directory, not a ui package.
+sys.path.insert(0,str(Path(__file__).resolve().parent))
+from plan_view import ROLES,task_states
 
 st.set_page_config(page_title='AI Delivery Team',page_icon='🏦',layout='wide')
 st.title('Bank AI Delivery Team')
@@ -69,7 +75,6 @@ def interaction_panel(id):
     story=request('/stories/'+id)
     if story is None:st.stop()
     if not story['approved']:
-        from ui.plan_view import ROLES,task_states
         st.subheader('План от продуктового менеджера')
         st.write(story['text'])
         if story.get('answers'):st.write('**Ваши уточнения:** '+story['answers'])
