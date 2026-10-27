@@ -1,0 +1,115 @@
+{
+  "backend": "mock",
+  "database": "disposable empty PostgreSQL",
+  "github": "tokenless simulated review gates; no GitHub writes",
+  "checks": [
+    "postgres_persistence_and_operator_leases",
+    "dynamic_two_epics_and_trusted_packaging",
+    "workspace_operator_auth_data",
+    "snapshot_binding_data",
+    "docker_check_data",
+    "restart_preserves_pending_snapshot",
+    "receipt_replay_data",
+    "no_integration_before_review_data",
+    "workspace_operator_auth_service",
+    "snapshot_binding_service",
+    "docker_check_service",
+    "workspace_operator_auth_service",
+    "snapshot_binding_service",
+    "docker_check_service",
+    "receipt_replay_service",
+    "no_integration_before_review_service",
+    "workspace_operator_auth_service",
+    "snapshot_binding_service",
+    "docker_check_service",
+    "receipt_replay_service",
+    "no_integration_before_review_service",
+    "second_epic_waits_for_release",
+    "workspace_operator_auth_extend",
+    "snapshot_binding_extend",
+    "docker_check_extend",
+    "workspace_operator_auth_extend",
+    "snapshot_binding_extend",
+    "docker_check_extend",
+    "receipt_replay_extend",
+    "no_integration_before_review_extend",
+    "workspace_operator_auth_quality",
+    "snapshot_binding_quality",
+    "docker_check_quality",
+    "receipt_replay_quality",
+    "no_integration_before_review_quality",
+    "package_docker_check_0",
+    "workspace_operator_auth_repair_d578a2ac1b5940deb1f60e40998eeda2_0",
+    "snapshot_binding_repair_d578a2ac1b5940deb1f60e40998eeda2_0",
+    "docker_check_repair_d578a2ac1b5940deb1f60e40998eeda2_0",
+    "receipt_replay_repair_d578a2ac1b5940deb1f60e40998eeda2_0",
+    "no_integration_before_review_repair_d578a2ac1b5940deb1f60e40998eeda2_0",
+    "package_docker_check_1",
+    "check_resumes_before_finish",
+    "all_four_tasks_integrated",
+    "two_epics_released_in_order",
+    "final_real_docker_tests_and_health",
+    "first_endpoint_preserved",
+    "second_endpoint_independent_probe",
+    "repair_updates_existing_pr_head",
+    "package_repair_preserves_old_immutable_version",
+    "confirmed_defects_resolved_after_rechecks",
+    "platform_file_false_positive_dismissed",
+    "repair_history_keeps_evidence_and_attempts",
+    "no_customer_question_for_code_errors",
+    "source_archive_matches_every_attempt_digest",
+    "repair_archive_bound_to_story",
+    "final_delivery_still_requires_review",
+    "real_ui_renders_defects_and_history"
+  ],
+  "story_id": "98d7d2d3-4c8d-41ae-96c6-1dcb26f2b1e5",
+  "usage": {
+    "calls": 55,
+    "tokens": 5500,
+    "estimated_cost_usd": 0.0,
+    "estimated_calls": 0,
+    "backends": [
+      "mock"
+    ],
+    "models": [
+      "deepseek/deepseek-v4.1-flash"
+    ]
+  },
+  "task_checks": [
+    {
+      "task_key": "data",
+      "tests_run": 0
+    },
+    {
+      "task_key": "service",
+      "tests_run": 1
+    },
+    {
+      "task_key": "service",
+      "tests_run": 1
+    },
+    {
+      "task_key": "service",
+      "tests_run": 1
+    },
+    {
+      "task_key": "extend",
+      "tests_run": 2
+    },
+    {
+      "task_key": "extend",
+      "tests_run": 2
+    },
+    {
+      "task_key": "quality",
+      "tests_run": 2
+    },
+    {
+      "task_key": "repair_d578a2ac1b5940deb1f60e40998eeda2_0",
+      "tests_run": 2
+    }
+  ],
+  "repair_attempts": 4,
+  "package_versions": 2,
+  "status": "passed"
+}

@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "scope": "Real OpenRouter structured-model smoke on synthetic material; no user story, banking acceptance or GitHub approval",
+  "calls": 5,
+  "total_tokens": 6961,
+  "cost_usd": 0.001660334,
+  "checks": [
+    "qa_independent_plan_schema",
+    "financial_analyst_independent_plan_schema",
+    "qa_rejects_wrong_numeric_result",
+    "financial_analyst_rejects_wrong_numeric_result",
+    "full_package_review_no_false_missing_dockerfile"
+  ],
+  "architecture_review": "Rejected incomplete synthetic job and raised implementation/instruction findings; this check only verifies access to the full package and absence of a false missing-Dockerfile claim. It does not assert that every model finding is correct."
+}

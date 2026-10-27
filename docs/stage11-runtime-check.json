@@ -1,0 +1,609 @@
+{
+  "status": "passed",
+  "scope": "Real Docker, synthetic fixture; no LLM review, Git approval or banking acceptance",
+  "checks": [
+    {
+      "case": "positive",
+      "passed": true,
+      "self_tests_passed": true,
+      "business_checks_passed": true,
+      "evidence": {
+        "contract_digest": "1f2506a715684122de5566c135b18caebfc58c9c1a51a2c32a7d6fd6146b5432",
+        "package_sha256": "24caf4d227aeaa1a7ead89c18ba15099990ab60a3aaba3f24f8da6d8a36370f1",
+        "phase": "check",
+        "checks": [
+          {
+            "role": "platform",
+            "id": "result",
+            "criterion": null,
+            "description": "Доступен содержательный результат; графики содержат числовые данные",
+            "passed": true,
+            "actual": {
+              "total": 30,
+              "unit": "RUB",
+              "data_origin": "synthetic",
+              "charts": [
+                {
+                  "series": [
+                    {
+                      "values": [
+                        10,
+                        20
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            "expected": "Непустой результат",
+            "reason": ""
+          },
+          {
+            "role": "qa",
+            "id": "sum",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 30,
+            "expected": 30,
+            "reason": ""
+          },
+          {
+            "role": "qa",
+            "id": "rows",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 1,
+            "expected": 1,
+            "reason": ""
+          },
+          {
+            "role": "financial_analyst",
+            "id": "sum",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 30,
+            "expected": 30,
+            "reason": ""
+          },
+          {
+            "role": "financial_analyst",
+            "id": "rows",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 1,
+            "expected": 1,
+            "reason": ""
+          }
+        ],
+        "outputs": [
+          {
+            "path": "report.csv",
+            "sha256": "4220559847aefa4b474e0ff16938bf46aa502e9b12f54302f01e0c9700f265a0",
+            "data": "dG90YWwKMzAK"
+          }
+        ],
+        "passed": true
+      }
+    },
+    {
+      "case": "empty-chart",
+      "passed": true,
+      "self_tests_passed": true,
+      "business_checks_passed": false,
+      "evidence": {
+        "contract_digest": "b90aceb246aeebbdb0d97aa2aca1addd569e408060f3ceadf448fd9ac79a8f21",
+        "package_sha256": "ba58b7d85b3430bff416c1b01c530a6935da24cc723fe7fd1333141d7609ef65",
+        "phase": "check",
+        "checks": [
+          {
+            "role": "platform",
+            "id": "result",
+            "criterion": null,
+            "description": "Доступен содержательный результат; графики содержат числовые данные",
+            "passed": false,
+            "actual": {
+              "total": 30,
+              "unit": "RUB",
+              "data_origin": "synthetic",
+              "charts": [
+                {
+                  "series": [
+                    {
+                      "values": []
+                    }
+                  ]
+                }
+              ]
+            },
+            "expected": "Непустой результат",
+            "reason": "Результат отсутствует или графики пусты"
+          },
+          {
+            "role": "qa",
+            "id": "sum",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 30,
+            "expected": 30,
+            "reason": ""
+          },
+          {
+            "role": "qa",
+            "id": "rows",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 1,
+            "expected": 1,
+            "reason": ""
+          },
+          {
+            "role": "financial_analyst",
+            "id": "sum",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 30,
+            "expected": 30,
+            "reason": ""
+          },
+          {
+            "role": "financial_analyst",
+            "id": "rows",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 1,
+            "expected": 1,
+            "reason": ""
+          }
+        ],
+        "outputs": [
+          {
+            "path": "report.csv",
+            "sha256": "4220559847aefa4b474e0ff16938bf46aa502e9b12f54302f01e0c9700f265a0",
+            "data": "dG90YWwKMzAK"
+          }
+        ],
+        "passed": false
+      }
+    },
+    {
+      "case": "wrong-total",
+      "passed": true,
+      "self_tests_passed": true,
+      "business_checks_passed": false,
+      "evidence": {
+        "contract_digest": "33196c41ddbec99e63bf2b1cf7cbac62f1afcd4264c805f3150e4dfed16b0fb3",
+        "package_sha256": "0260651658bffe53e24deb21c4f7e734817e65d5fa2d1b5df03d0f46f1176b57",
+        "phase": "check",
+        "checks": [
+          {
+            "role": "platform",
+            "id": "result",
+            "criterion": null,
+            "description": "Доступен содержательный результат; графики содержат числовые данные",
+            "passed": true,
+            "actual": {
+              "total": 31,
+              "unit": "RUB",
+              "data_origin": "synthetic",
+              "charts": [
+                {
+                  "series": [
+                    {
+                      "values": [
+                        10,
+                        20
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            "expected": "Непустой результат",
+            "reason": ""
+          },
+          {
+            "role": "qa",
+            "id": "sum",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": false,
+            "actual": 31,
+            "expected": 30,
+            "reason": "Фактическое значение не соответствует независимой проверке"
+          },
+          {
+            "role": "qa",
+            "id": "rows",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 1,
+            "expected": 1,
+            "reason": ""
+          },
+          {
+            "role": "financial_analyst",
+            "id": "sum",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": false,
+            "actual": 31,
+            "expected": 30,
+            "reason": "Фактическое значение не соответствует независимой проверке"
+          },
+          {
+            "role": "financial_analyst",
+            "id": "rows",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 1,
+            "expected": 1,
+            "reason": ""
+          }
+        ],
+        "outputs": [
+          {
+            "path": "report.csv",
+            "sha256": "4220559847aefa4b474e0ff16938bf46aa502e9b12f54302f01e0c9700f265a0",
+            "data": "dG90YWwKMzAK"
+          }
+        ],
+        "passed": false
+      }
+    },
+    {
+      "case": "empty-file",
+      "passed": true,
+      "self_tests_passed": true,
+      "business_checks_passed": false,
+      "evidence": {
+        "contract_digest": "f5c39317fc84228cadeb0e187f3b370ede804a78b225de5a3dbd40aaf5a891b3",
+        "package_sha256": "02bc0e5e29390c4d121dce46ae0aed27eec330c5335815f5ebceef90848a74a3",
+        "phase": "check",
+        "checks": [
+          {
+            "role": "platform",
+            "id": "result",
+            "criterion": null,
+            "description": "Доступен содержательный результат; графики содержат числовые данные",
+            "passed": true,
+            "actual": {
+              "total": 30,
+              "unit": "RUB",
+              "data_origin": "synthetic",
+              "charts": [
+                {
+                  "series": [
+                    {
+                      "values": [
+                        10,
+                        20
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            "expected": "Непустой результат",
+            "reason": ""
+          },
+          {
+            "role": "qa",
+            "id": "sum",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 30,
+            "expected": 30,
+            "reason": ""
+          },
+          {
+            "role": "qa",
+            "id": "rows",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": false,
+            "actual": 0,
+            "expected": 1,
+            "reason": "Фактическое значение не соответствует независимой проверке"
+          },
+          {
+            "role": "financial_analyst",
+            "id": "sum",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 30,
+            "expected": 30,
+            "reason": ""
+          },
+          {
+            "role": "financial_analyst",
+            "id": "rows",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": false,
+            "actual": 0,
+            "expected": 1,
+            "reason": "Фактическое значение не соответствует независимой проверке"
+          }
+        ],
+        "outputs": [
+          {
+            "path": "report.csv",
+            "sha256": "8f67aeb8926b53c7569391657071c27b07606cf45e3dd8de52cc85f6c691c814",
+            "data": "dG90YWwK"
+          }
+        ],
+        "passed": false
+      }
+    },
+    {
+      "case": "job-file",
+      "passed": true,
+      "self_tests_passed": true,
+      "business_checks_passed": true,
+      "evidence": {
+        "contract_digest": "e99ee7e182c4fd7176917b17b97990211d07e2d380a83c41398f6ee2c7081a07",
+        "package_sha256": "fcff9ef21216647fa5b4b1913ad0c5252fa299e58f81fe19d47c10b3b303fbf0",
+        "phase": "check",
+        "checks": [
+          {
+            "role": "platform",
+            "id": "result",
+            "criterion": null,
+            "description": "Доступен содержательный результат; графики содержат числовые данные",
+            "passed": true,
+            "actual": {
+              "total": 30,
+              "unit": "RUB",
+              "data_origin": "synthetic",
+              "charts": [
+                {
+                  "series": [
+                    {
+                      "values": [
+                        10,
+                        20
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            "expected": "Непустой результат",
+            "reason": ""
+          },
+          {
+            "role": "qa",
+            "id": "sum",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 30,
+            "expected": 30,
+            "reason": ""
+          },
+          {
+            "role": "qa",
+            "id": "rows",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 1,
+            "expected": 1,
+            "reason": ""
+          },
+          {
+            "role": "financial_analyst",
+            "id": "sum",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 30,
+            "expected": 30,
+            "reason": ""
+          },
+          {
+            "role": "financial_analyst",
+            "id": "rows",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 1,
+            "expected": 1,
+            "reason": ""
+          }
+        ],
+        "outputs": [
+          {
+            "path": "report.csv",
+            "sha256": "4220559847aefa4b474e0ff16938bf46aa502e9b12f54302f01e0c9700f265a0",
+            "data": "dG90YWwKMzAK"
+          }
+        ],
+        "passed": true
+      }
+    },
+    {
+      "case": "job-delivery-and-identical-retry",
+      "passed": true,
+      "evidence": {
+        "contract_digest": "e99ee7e182c4fd7176917b17b97990211d07e2d380a83c41398f6ee2c7081a07",
+        "package_sha256": "fcff9ef21216647fa5b4b1913ad0c5252fa299e58f81fe19d47c10b3b303fbf0",
+        "phase": "deploy",
+        "checks": [
+          {
+            "role": "platform",
+            "id": "result",
+            "criterion": null,
+            "description": "Доступен содержательный результат; графики содержат числовые данные",
+            "passed": true,
+            "actual": {
+              "total": 30,
+              "unit": "RUB",
+              "data_origin": "synthetic",
+              "charts": [
+                {
+                  "series": [
+                    {
+                      "values": [
+                        10,
+                        20
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            "expected": "Непустой результат",
+            "reason": ""
+          },
+          {
+            "role": "qa",
+            "id": "sum",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 30,
+            "expected": 30,
+            "reason": ""
+          },
+          {
+            "role": "qa",
+            "id": "rows",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 1,
+            "expected": 1,
+            "reason": ""
+          },
+          {
+            "role": "financial_analyst",
+            "id": "sum",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 30,
+            "expected": 30,
+            "reason": ""
+          },
+          {
+            "role": "financial_analyst",
+            "id": "rows",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 1,
+            "expected": 1,
+            "reason": ""
+          }
+        ],
+        "outputs": [
+          {
+            "path": "report.csv",
+            "sha256": "4220559847aefa4b474e0ff16938bf46aa502e9b12f54302f01e0c9700f265a0",
+            "data": "dG90YWwKMzAK"
+          }
+        ],
+        "passed": true
+      }
+    },
+    {
+      "case": "deployment-and-rollback",
+      "passed": true,
+      "old_total_restored": 30,
+      "rejected_evidence": {
+        "contract_digest": "447cf98e51447dff70770249467deef0e2c09100ff1f3d79b63da6392768345e",
+        "package_sha256": "d46a2fdd7b64b08caa1a8d79b54413faca299d2ffe9b36b8f5d6e2f694e79404",
+        "phase": "deploy",
+        "checks": [
+          {
+            "role": "platform",
+            "id": "result",
+            "criterion": null,
+            "description": "Доступен содержательный результат; графики содержат числовые данные",
+            "passed": true,
+            "actual": {
+              "total": 31,
+              "unit": "RUB",
+              "data_origin": "synthetic",
+              "charts": [
+                {
+                  "series": [
+                    {
+                      "values": [
+                        10,
+                        20
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            "expected": "Непустой результат",
+            "reason": ""
+          },
+          {
+            "role": "qa",
+            "id": "sum",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": false,
+            "actual": 31,
+            "expected": 30,
+            "reason": "Фактическое значение не соответствует независимой проверке"
+          },
+          {
+            "role": "qa",
+            "id": "rows",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 1,
+            "expected": 1,
+            "reason": ""
+          },
+          {
+            "role": "financial_analyst",
+            "id": "sum",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": false,
+            "actual": 31,
+            "expected": 30,
+            "reason": "Фактическое значение не соответствует независимой проверке"
+          },
+          {
+            "role": "financial_analyst",
+            "id": "rows",
+            "criterion": 0,
+            "description": "Независимая сумма 10 + 20 RUB",
+            "passed": true,
+            "actual": 1,
+            "expected": 1,
+            "reason": ""
+          }
+        ],
+        "outputs": [
+          {
+            "path": "report.csv",
+            "sha256": "4220559847aefa4b474e0ff16938bf46aa502e9b12f54302f01e0c9700f265a0",
+            "data": "dG90YWwKMzAK"
+          }
+        ],
+        "passed": false
+      }
+    }
+  ]
+}

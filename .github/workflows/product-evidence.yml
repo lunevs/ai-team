@@ -1,0 +1,29 @@
+name: Product result evidence
+on:
+  pull_request:
+    paths:
+      - 'app/product*'
+      - 'scripts/product_operator.py'
+      - 'scripts/product_verifier.py'
+      - 'scripts/run_stage11_checks.py'
+      - '.github/workflows/product-evidence.yml'
+permissions:
+  contents: read
+jobs:
+  result-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Real Docker checks, delivery and rollback on synthetic controls
+        run: |
+          rm -f docs/stage11-runtime-check.json
+          python3 scripts/run_stage11_checks.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: product-result-evidence
+          path: docs/stage11-runtime-check.json

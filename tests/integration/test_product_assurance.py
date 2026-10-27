@@ -71,6 +71,11 @@ def test_successful_exact_version_proofs_publish_original_file_and_require_git_g
         with pytest.raises(HTTPException):download_output(uuid.uuid4(),output['id'],'fixture-customer')
         monkeypatch.setattr(delivery,'broker',lambda *a,**kw:{'eligible':False})
         with pytest.raises(db.Conflict):accept(sid,Approval(revision=1,plan_digest='c'*64),'fixture-customer')
+        with db.connection() as conn:conn.execute('UPDATE product_outputs SET content=%s WHERE id=%s',(b'corrupted',output['id']))
+        assert not products.public(products.get(sid))['ready_for_acceptance']
+        with pytest.raises(HTTPException):download_output(rid,output['id'],'fixture-customer')
+        with pytest.raises(db.Conflict):accept(sid,Approval(revision=1,plan_digest='c'*64),'fixture-customer')
+        with db.connection() as conn:conn.execute('UPDATE product_outputs SET content=%s WHERE id=%s',(raw,output['id']))
         # Explicit test double: not a GitHub review or permission to merge a real PR.
         monkeypatch.setattr(delivery,'broker',lambda *a,**kw:{'eligible':True})
         assert accept(sid,Approval(revision=1,plan_digest='c'*64),'fixture-customer')['accepted']

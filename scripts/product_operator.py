@@ -296,6 +296,9 @@ def deploy_package(content,operation):
                 job_volume=next(v['Name'] for v in previous['Mounts'] if v['Destination']=='/data')
                 command(['docker',*restricted(image,name=name+'-verification',volume=job_volume,detach=True),'python','-c','import time;time.sleep(60)'],timeout=20)
             try:verify(sys.modules[__name__],name if metadata['kind']=='service' else name+'-verification',operation,report,metadata['kind'])
+            except OperationFailed as exc:
+                report['error_type']=exc.kind
+                return report
             finally:
                 if metadata['kind']=='job':remove_container(name+'-verification')
             report.update(passed=True,health_passed=True,port=port);return report

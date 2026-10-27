@@ -31,6 +31,22 @@ def package_bytes(record):
     return read_artifact(record['package'].get('storage_id',record['id']),'product.zip',record['package'])
 
 
+def independent_plan(story,role,context,suffix):
+    from app.product_assurance import validate_plan
+    feedback=''
+    for attempt in range(3):
+        plan=generate(story['id'],role,AcceptancePlan,context|{'validation_feedback':feedback},
+                      result_role='acceptance_plan_'+role+'_'+suffix+'_'+str(attempt))
+        try:
+            value=plan.model_dump();count=len(context['criteria']);validate_plan(value,count)
+            if role=='qa' and (value['not_applicable_reason'] or ({c['criterion'] for c in value['checks']}|set(value.get('unsupported_criteria',[])))!=set(range(count))):
+                raise ValueError('QA must cover every zero-based criterion exactly within the supplied range; unsupported_criteria explicitly blocks uncheckable requirements')
+            if value['not_applicable_reason'] and len(value['not_applicable_reason'])<20:raise ValueError('Explain financial non-applicability in at least 20 characters')
+            return plan
+        except ValueError as exc:feedback=str(exc)
+    raise db.Conflict('Independent verification plan remained invalid after structured feedback')
+
+
 def run(story_id):
     story=db.active(story_id);tracker.honor_remote_stop(story_id)
     workspace_mode=(story.get('plan') or {}).get('development_mode')=='workspace'
@@ -103,14 +119,14 @@ def run(story_id):
         schedule(story_id)
         return
     if record['status']=='VERIFICATION_PLANNING':
-        from app.product_assurance import make_contract
+        from app.product_assurance import make_contract,digest
         context={'story':story['text'],'answers':story['answers'],'criteria':story['pm']['acceptance_criteria'],
                  'architecture':record['specification']['architecture'],'output_type':record['specification']['output_type'],
                  'sources':record['specification'].get('sources',[]),
                  'instruction': 'До просмотра реализации задай независимые исполнимые проверки. Каждый criterion — индекс критерия с нуля. QA обязан покрыть все критерии. Доступны только JSON /result, файлы JSON/CSV/XLSX/PPTX в /data; pointer — JSON Pointer; XLSX /sheet1/A1; CSV массив строк; PPTX /slides массив текстов слайдов. Формулы Excel без независимого пересчёта не поддерживаются. number сравнивает Decimal с tolerance, equals строгое равенство, min_count требует положительное число строк, nonempty не заменяет проверку расчёта. basis объясняет независимый источник ожидаемого значения: требования, заранее рассчитанный пример, утверждённый контроль. Не выдумывай ожидаемые числа для неизвестных реальных данных, не подменяй критерий запуском или наличием поля. Для невыполнимых этим протоколом критериев или неизвестных независимых ожидаемых значений укажи индексы в unsupported_criteria: они обязательно блокируют приёмку. Не подменяй их упрощённой проверкой. Проверенные и unsupported критерии QA вместе покрывают все критерии. Для финансовых расчётов нужны числовые контроли, граничные случаи, единицы. Если их нет, финансовый аналитик объясняет not_applicable_reason и проверяет реальный пользовательский результат. QA not_applicable_reason оставляет пустым.'}
-        suffix=record['package']['sha256'][:16]+'_'+str(record['review_round'])
-        qa=generate(story_id,'qa',AcceptancePlan,context,result_role='acceptance_plan_qa_'+suffix)
-        financial=generate(story_id,'financial_analyst',AcceptancePlan,context,result_role='acceptance_plan_financial_'+suffix)
+        suffix=record['package']['sha256'][:16]+'_'+str(record['review_round'])+'_'+digest(context)[:16]
+        qa=independent_plan(story,'qa',context,suffix)
+        financial=independent_plan(story,'financial_analyst',context,suffix)
         contract=make_contract(record,story,qa.model_dump(),financial.model_dump())
         knowledge.ensure_page(story_id,f"r{story['revision']}:verification:{suffix}",'Независимые проверки результата',
             '# Проверки пользовательских требований\n\n'+json.dumps(contract,ensure_ascii=False,indent=2))
@@ -262,13 +278,23 @@ def publish(story,record):
             schedule(story['id'],30)
 
 
+def outputs_ready(record):
+    import hashlib
+    deployment=record.get('deployment') or {}
+    expected=(deployment.get('evidence') or {}).get('outputs',[])
+    with db.connection() as conn:
+        rows=conn.execute('SELECT path,sha256,content FROM product_outputs WHERE release_id=%s AND operation_id=%s',
+                          (record['id'],deployment.get('operation_id'))).fetchall()
+    return len(rows)==len(expected) and {(r['path'],r['sha256']) for r in rows}=={(o['path'],o['sha256']) for o in expected} and all(hashlib.sha256(bytes(r['content'])).hexdigest()==r['sha256'] for r in rows)
+
+
 def public(record):
     if not record:return None
     result={k:record[k] for k in ['id','story_id','product_key','version','status','package','qa','review','git','documentation_url','deployment','accepted','created_at','updated_at']}
 
     if record.get('assurance_version')==1:
         from app.product_assurance import ready
-        result.update(verification=record.get('verification'),ready_for_acceptance=ready(record))
+        result.update(verification=record.get('verification'),ready_for_acceptance=ready(record) and outputs_ready(record))
         with db.connection() as conn:
             result['outputs']=conn.execute('SELECT o.id,o.path,o.sha256 FROM product_outputs o JOIN product_evidence e ON e.operation_id=o.operation_id WHERE o.release_id=%s AND e.operation_id=%s',
                 (record['id'],(record.get('deployment') or {}).get('operation_id'))).fetchall()

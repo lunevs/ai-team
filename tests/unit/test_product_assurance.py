@@ -105,3 +105,17 @@ def test_xlsx_cells_and_pptx_slides_are_parsed_without_executing_content():
     with pytest.raises(ValueError):decode(zipped({'xl/worksheets/sheet1.xml':sheet.replace('<v>30</v>','<f>10+20</f><v>30</v>')}),'xlsx_file')
     slide='<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:t>Итого 30 RUB</a:t></p:sld>'
     assert decode(zipped({'ppt/slides/slide1.xml':slide}),'pptx_file')=={'slides':['Итого 30 RUB']}
+
+
+def test_incomplete_plan_receives_feedback_and_a_fresh_generation_key(monkeypatch):
+    from app import products
+    from app.product_contract import AcceptancePlan
+    c=contract()['qa']['checks'][0];calls=[]
+    def generate(sid,role,schema,context,result_role):
+        calls.append((copy.deepcopy(context),result_role))
+        return AcceptancePlan(checks=[c] if len(calls)==1 else [c,c|{'id':'second','criterion':1}])
+    monkeypatch.setattr(products,'generate',generate)
+    plan=products.independent_plan({'id':'fixture'},'qa',{'criteria':['Первое','Второе'],'story':'Synthetic control only'},'package')
+    assert len(plan.checks)==2 and len(calls)==2
+    assert calls[0][1]!=calls[1][1] and calls[1][0]['validation_feedback']
+    assert all('solution' not in context and 'files' not in context for context,_ in calls)
