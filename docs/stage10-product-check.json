@@ -1,0 +1,83 @@
+{
+  "profile": "airflow-postgres-v1",
+  "source": {
+    "id": "states",
+    "format": "csv",
+    "url": "https://raw.githubusercontent.com/plotly/datasets/83665a724897ce3cac8db11ff2f53b216167a806/2014_usa_states.csv"
+  },
+  "scope": "Technical fixture; no CBR, LLM, Git approvals or customer acceptance. Actual Docker/PostgreSQL/Airflow/public HTTPS.",
+  "checks": [
+    "Actual research fetch returned source SHA256 and bounded preview",
+    "App and Airflow image IDs are bound to the check",
+    "Standalone package installs with no team credentials or team network",
+    "Two actual scheduled DAG runs load exactly 52 rows without duplicates",
+    "Web application reads actual ingested rows",
+    "Gateway rejects undeclared source/metadata URL",
+    "App cannot reach internet, team PostgreSQL or metadata service directly",
+    "Business role cannot connect to Airflow metadata database",
+    "Actual gateway rejects public hostname resolving to loopback",
+    "Scheduler/app restart preserves data and idempotent next scheduled run",
+    "Repeated migration leaves data unchanged",
+    "App and Airflow image IDs are bound to the check",
+    "Update clones stopped volumes and applies SQL migration",
+    "Update preserves external result URL port",
+    "App and Airflow image IDs are bound to the check",
+    "Data-dependent failed migration restores previous stack and its data",
+    "Previous working result remains accessible after failed update",
+    "Interrupted/failed deployment retry is safe and leaves old data intact",
+    "Trusted XLSX/XML/JSON readers work in application runtime",
+    "Trusted XLSX/XML/JSON readers work in Airflow runtime"
+  ],
+  "research": {
+    "source_id": "states",
+    "url": "https://raw.githubusercontent.com/plotly/datasets/83665a724897ce3cac8db11ff2f53b216167a806/2014_usa_states.csv",
+    "format": "csv",
+    "bytes": 1411,
+    "sha256": "408071e1a553d550ae01ee5c7654df233301c880f09aa110d165563e19b010a9",
+    "content_type": "text/plain; charset=utf-8"
+  },
+  "package_checks": [
+    {
+      "passed": true,
+      "tests_passed": true,
+      "health_passed": true,
+      "image_id": "sha256:015650ea3130504ef97dc8dacbabd12f6f240efb9af7a33e416e4be37be8d62b",
+      "result": {
+        "airflow_image_id": "sha256:c79cb6604e49a9d1c117e7b698e02c53e57ea64809ceadd071dd2ce9cf65176d"
+      }
+    },
+    {
+      "passed": true,
+      "tests_passed": true,
+      "health_passed": true,
+      "image_id": "sha256:3e187ca4811d627f7e6e955462bd56b25f74cde855d74de1fd7e4880b6c6f954",
+      "result": {
+        "airflow_image_id": "sha256:5be3da2ec87533c253f93d0885e1b0afd317872c8429845579436ac418217d82"
+      }
+    },
+    {
+      "passed": true,
+      "tests_passed": true,
+      "health_passed": true,
+      "image_id": "sha256:796812ac81c08794c2e5ffdea43e630db1e72bccba6ce65b798e27936ade6c4f",
+      "result": {
+        "airflow_image_id": "sha256:580fb072cdda6f6c9a50b1dd0aacf74c8bfbb606602d8e6ae7534c3b4127b325"
+      }
+    }
+  ],
+  "initial_manifest_sha256": "49c848aa947d459de2b468657603745f9a6dbb5957f986bf8d24e3fb8ee225b7",
+  "scheduled_runs": 2,
+  "result": "52|322405452",
+  "protected_database_probe": "actual local team PostgreSQL address; no credentials passed",
+  "resource_sample": [
+    "ai-p-10aabbccddee-41ec7b8e9a71-postgres-1 35.07MiB / 256MiB",
+    "ai-p-10aabbccddee-41ec7b8e9a71-app-1 43.97MiB / 512MiB",
+    "ai-p-10aabbccddee-41ec7b8e9a71-source-gateway-1 15.78MiB / 64MiB",
+    "ai-p-10aabbccddee-41ec7b8e9a71-gateway-1 16.84MiB / 64MiB",
+    "ai-p-10aabbccddee-41ec7b8e9a71-airflow-api-1 229.4MiB / 768MiB",
+    "ai-p-10aabbccddee-41ec7b8e9a71-airflow-scheduler-1 217.3MiB / 1GiB",
+    "ai-p-10aabbccddee-41ec7b8e9a71-airflow-dag-processor-1 151MiB / 512MiB"
+  ],
+  "status": "passed",
+  "fixture_cleanup": "Owned product stacks/volumes removed; private local receipts retained."
+}

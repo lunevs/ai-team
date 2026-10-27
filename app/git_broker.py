@@ -259,7 +259,7 @@ def ready(authorization:str=Header(default='')):
         if product_valid:product_profiles=value.get('profiles',[value.get('profile')])
     except (KeyError,ValueError,TypeError):product_valid=False
 
-    workspace_ref=os.getenv('GITHUB_WORKSPACE_BASE_REF','release/370')
+    workspace_ref=os.getenv('GITHUB_WORKSPACE_BASE_REF','release/378')
     workspace=github(REPO+'/git/ref/heads/'+workspace_ref,missing=True)
     workspace_sha=workspace['object']['sha'] if workspace else None
     contract=github(REPO+'/contents/app/workspace_runtime_contract.json?ref='+workspace_sha,missing=True) if workspace_sha else None
