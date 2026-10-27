@@ -176,14 +176,16 @@ def check_package(content,operation):
                     if len(response.stdout)<=8000:report['result']=value if isinstance(value,dict) and len(value)<=8 else {'value':value}
                 except (ValueError,TypeError):pass
             else:
-                test=command(['docker',*restricted(image,name=name,network=smoke_network,env_file=smoke_env)],timeout=90,check=False)
-                if test.returncode:raise OperationFailed('TestsFailed')
-                # /data is tmpfs for the isolated job check; inspect result before exit via wrapper.
-                remove_container(name)
-                check_code="import runpy,json,pathlib;runpy.run_path('app.py',run_name='__main__');p=pathlib.Path('/data/result.json');assert p.is_file() and p.stat().st_size<=65536;json.loads(p.read_text())"
-                test=command(['docker',*restricted(image,name=name,network=smoke_network,env_file=smoke_env),'python','-c',check_code],timeout=90,check=False)
-                if test.returncode:raise OperationFailed('TestsFailed')
-            report['health_passed']=True;report['passed']=True
+                wrapper="import runpy,time;runpy.run_path('app.py',run_name='__main__');open('/tmp/job-complete','w').close();time.sleep(600)"
+                command(['docker',*restricted(image,name=name,network=smoke_network,env_file=smoke_env,detach=True),'python','-c',wrapper],timeout=20)
+                deadline=time.monotonic()+90
+                while docker('exec',name,'python','-c',"import pathlib;assert pathlib.Path('/tmp/job-complete').exists()",check=False).returncode:
+                    if time.monotonic()>deadline:raise OperationFailed('TestsFailed')
+                    time.sleep(0.5)
+            report['health_passed']=True
+            from scripts.product_verifier import verify
+            verify(sys.modules[__name__],name,operation,report)
+            report['passed']=True
     except OperationFailed as exc:report['error_type']=exc.kind
     except (ValueError,KeyError,TypeError):report['error_type']='PolicyRejected'
     finally:
@@ -289,6 +291,8 @@ def deploy_package(content,operation):
                     port=int(bindings['8000/tcp'][0]['HostPort']);docker('start',proxy)
                 else:
                     port=free_port();gateway(proxy,name,port)
+            from scripts.product_verifier import verify
+            verify(sys.modules[__name__],name,operation,report)
             report.update(passed=True,health_passed=True,port=port);return report
         if metadata['needs_database']:
             # Database migrations are not safely reversible generically: keep the running version.
@@ -343,6 +347,12 @@ def deploy_package(content,operation):
         directory.mkdir(parents=True,exist_ok=True,mode=0o700)
         (directory/'product.zip').write_bytes(content)
         if not (directory/'products').exists():extract(content,directory)
+        from scripts.product_verifier import verify
+        if metadata['kind']=='job':
+            command(['docker',*restricted(image,name=name+'-verification',network='none',volume=volume,detach=True),'python','-c','import time;time.sleep(60)'],timeout=20)
+        try:verify(sys.modules[__name__],name if metadata['kind']=='service' else name+'-verification',operation,report)
+        finally:
+            if metadata['kind']=='job':remove_container(name+'-verification')
         report.update(passed=True,health_passed=True,port=port)
         if previous:remove_container(old) # previous volume/image remain available for rollback
     except (OperationFailed,urllib.error.URLError,http.client.RemoteDisconnected,ValueError,KeyError) as exc:

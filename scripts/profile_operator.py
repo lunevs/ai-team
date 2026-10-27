@@ -111,6 +111,8 @@ def check(content,operation):
             phase='services_and_dags'
             name=start(context,env,project)
             if host().probe(name,'/result').returncode:raise host().OperationFailed('HealthFailed')
+            from scripts.product_verifier import verify
+            verify(host(),name,operation,report)
             report.update(passed=True,health_passed=True)
         except host().OperationFailed as exc:
             report['error_type']=exc.kind;report['result']['failed_step']=phase
@@ -178,6 +180,8 @@ def deploy(content,operation):
         phase='services_and_dags'
         name=start(context,env,project)
         if h.probe(name,'/result').returncode:raise h.OperationFailed('HealthFailed')
+        from scripts.product_verifier import verify
+        verify(h,name,operation,report)
         port=int(next(line.split('=',1)[1] for line in env.read_text().splitlines() if line.startswith('PRODUCT_PORT=')))
         record={'digest':digest,'project':project,'version':metadata['version'],'previous':old['digest'] if old and old['digest']!=digest else (old or {}).get('previous')}
         temporary=pointer.with_suffix('.tmp');temporary.write_text(json.dumps(record));temporary.chmod(0o600);temporary.replace(pointer)
