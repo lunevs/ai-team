@@ -264,6 +264,18 @@ def provision_database(key):
     path.chmod(0o600)
 
 
+def gateway_health(port,timeout=20):
+    deadline=time.monotonic()+timeout
+    while True:
+        try:
+            with urllib.request.urlopen(f'http://127.0.0.1:{port}/health',timeout=3) as response:
+                if response.status!=200:raise OperationFailed('HealthFailed')
+            return
+        except (urllib.error.URLError,ConnectionError,TimeoutError):
+            if time.monotonic()>deadline:raise OperationFailed('HealthFailed') from None
+            time.sleep(0.5)
+
+
 def deploy_package(content,operation):
     metadata,_=inspect_package(content)
     if metadata.get('runtime_profile')=='airflow-postgres-v1':
@@ -296,6 +308,9 @@ def deploy_package(content,operation):
                 job_volume=next(v['Name'] for v in previous['Mounts'] if v['Destination']=='/data')
                 command(['docker',*restricted(image,name=name+'-verification',volume=job_volume,detach=True),'python','-c','import time;time.sleep(60)'],timeout=20)
             try:verify(sys.modules[__name__],name if metadata['kind']=='service' else name+'-verification',operation,report,metadata['kind'])
+            except OperationFailed as exc:
+                report['error_type']=exc.kind
+                return report
             finally:
                 if metadata['kind']=='job':remove_container(name+'-verification')
             report.update(passed=True,health_passed=True,port=port);return report
@@ -333,15 +348,7 @@ def deploy_package(content,operation):
                 if isinstance(value,dict) and len(value)<=8 and len(response.stdout)<=8000:report['result']=value
             except (ValueError,TypeError):pass
             gateway(proxy,name,port)
-            deadline=time.monotonic()+20
-            while True:
-                try:
-                    with urllib.request.urlopen(f'http://127.0.0.1:{port}/health',timeout=3) as r:
-                        if r.status!=200:raise OperationFailed('HealthFailed')
-                    break
-                except (urllib.error.URLError,http.client.RemoteDisconnected,TimeoutError):
-                    if time.monotonic()>deadline:raise OperationFailed('HealthFailed')
-                    time.sleep(0.5)
+            gateway_health(port)
         else:
             data=docker('run','--rm','--network','none','--read-only','--user','10001:10001',
                 '--cap-drop','ALL','--mount',f'type=volume,source={volume},target=/data,readonly',
@@ -360,7 +367,7 @@ def deploy_package(content,operation):
             if metadata['kind']=='job':remove_container(name+'-verification')
         report.update(passed=True,health_passed=True,port=port)
         if previous:remove_container(old) # previous volume/image remain available for rollback
-    except (OperationFailed,urllib.error.URLError,http.client.RemoteDisconnected,ValueError,KeyError) as exc:
+    except (OperationFailed,urllib.error.URLError,ConnectionError,TimeoutError,ValueError,KeyError) as exc:
         report['error_type']=exc.kind if isinstance(exc,OperationFailed) else 'DeploymentFailed'
         remove_container(name)
         if previous:

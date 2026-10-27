@@ -258,6 +258,9 @@ def interaction_panel(id):
             if verification:
                 st.write('**Проверка результата по вашим требованиям**')
                 receipt=deployment.get('evidence') or (product.get('qa') or {}).get('evidence') or {}
+                actual_result=next((c.get('actual') for c in receipt.get('checks',[]) if c.get('role')=='platform'),None)
+                if actual_result is not None and not deployment.get('result'):
+                    st.write('Полученный результат');st.json(actual_result)
                 by_criterion={}
                 for check in receipt.get('checks',[]):
                     if check.get('criterion') is not None:by_criterion.setdefault(check['criterion'],[]).append(check)
@@ -273,10 +276,13 @@ def interaction_panel(id):
                     st.warning('Результат пока не готов. Разработчик исправляет замечания; затем проверяющие повторят проверки. Уточнение требований нужно только при отдельном вопросе команды.')
                 st.caption('Числовые проверки используют заранее заданные контроли. Тестовые данные не подтверждают загрузку реальных данных.')
             for output in product.get('outputs',[]):
-                with httpx.Client(timeout=30) as client:
-                    response=client.get(API+'/products/'+product['id']+'/outputs/'+output['id'],headers={'Authorization':'Bearer '+TOKEN})
-                if response.status_code==200:
-                    st.download_button('Скачать результат: '+output['path'],response.content,file_name=output['path'].rsplit('/',1)[-1],key='output-'+output['id'])
+                try:
+                    with httpx.Client(timeout=10) as client:
+                        response=client.get(API+'/products/'+product['id']+'/outputs/'+output['id'],headers={'Authorization':'Bearer '+TOKEN})
+                    if response.status_code==200:
+                        st.download_button('Скачать результат: '+output['path'],response.content,file_name=output['path'].rsplit('/',1)[-1],key='output-'+output['id'])
+                    else:st.warning('Файл результата временно недоступен: '+output['path'])
+                except httpx.TransportError:st.warning('Не удалось получить файл результата; проверим при обновлении.')
             if product['status']=='ACCEPTANCE' and not product.get('ready_for_acceptance'):
                 st.warning('Для приёмки нужны актуальные доказательства результата. Команде требуется повторить независимые проверки этой версии.')
             if product['status']=='ACCEPTANCE' and product.get('ready_for_acceptance') and not product['accepted']:

@@ -105,3 +105,46 @@ def test_xlsx_cells_and_pptx_slides_are_parsed_without_executing_content():
     with pytest.raises(ValueError):decode(zipped({'xl/worksheets/sheet1.xml':sheet.replace('<v>30</v>','<f>10+20</f><v>30</v>')}),'xlsx_file')
     slide='<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:t>Итого 30 RUB</a:t></p:sld>'
     assert decode(zipped({'ppt/slides/slide1.xml':slide}),'pptx_file')=={'slides':['Итого 30 RUB']}
+
+
+def test_incomplete_plan_receives_feedback_and_a_fresh_generation_key(monkeypatch):
+    from app import products
+    from app.product_contract import AcceptancePlan
+    c=contract()['qa']['checks'][0];calls=[]
+    def generate(sid,role,schema,context,result_role):
+        calls.append((copy.deepcopy(context),result_role))
+        return AcceptancePlan(checks=[c] if len(calls)==1 else [c,c|{'id':'second','criterion':1}])
+    monkeypatch.setattr(products,'generate',generate)
+    plan=products.independent_plan({'id':'fixture'},'qa',{'criteria':['Первое','Второе'],'story':'Synthetic control only'},'package')
+    assert len(plan.checks)==2 and len(calls)==2
+    assert calls[0][1]!=calls[1][1] and calls[1][0]['validation_feedback']
+    assert all('solution' not in context and 'files' not in context for context,_ in calls)
+
+
+def test_gateway_retries_transient_connection_reset_before_reporting_ready(monkeypatch):
+    from scripts import product_operator as host
+    calls=[]
+    class Response:
+        status=200
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+    def open_url(*args,**kwargs):
+        calls.append(args[0])
+        if len(calls)==1:raise ConnectionResetError('gateway is starting')
+        return Response()
+    monkeypatch.setattr(host.urllib.request,'urlopen',open_url)
+    monkeypatch.setattr(host.time,'sleep',lambda _:None)
+    host.gateway_health(12345)
+    assert calls==['http://127.0.0.1:12345/health']*2
+
+
+def test_gateway_exhausted_retry_is_a_health_failure(monkeypatch):
+    from scripts import product_operator as host
+    ticks=[0]
+    monkeypatch.setattr(host.time,'monotonic',lambda:ticks[0])
+    def reset(*a,**kw):
+        ticks[0]=21
+        raise ConnectionResetError()
+    monkeypatch.setattr(host.urllib.request,'urlopen',reset)
+    with pytest.raises(host.OperationFailed) as error:host.gateway_health(12345)
+    assert error.value.kind=='HealthFailed'

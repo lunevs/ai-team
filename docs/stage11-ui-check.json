@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "scope": "Streamlit AppTest with explicit UI fixture; source story read only",
+  "checks": [
+    "criteria_rendered",
+    "original_csv_download_button",
+    "acceptance_button_when_ready",
+    "stale_or_failed_evidence_hides_acceptance",
+    "customer_failure_explanation"
+  ]
+}

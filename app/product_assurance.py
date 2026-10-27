@@ -33,10 +33,12 @@ def validate_plan(plan,criteria_count):
         if c['operator'] not in {'equals','number','min_count','nonempty'}:raise ValueError('Unsupported comparison')
         if not isinstance(c['expected'],(str,int,float,bool,list,dict,type(None))):raise ValueError('Invalid expectation')
         if len(json.dumps(c['expected']))>2000:raise ValueError('Oversized expectation')
-        tolerance=Decimal(str(c['tolerance']))
+        try:tolerance=Decimal(str(c['tolerance']))
+        except InvalidOperation:raise ValueError('Invalid numeric tolerance') from None
         if not tolerance.is_finite() or tolerance<0:raise ValueError('Invalid tolerance')
         if c['operator'] in {'number','min_count'}:
-            number=Decimal(str(c['expected']))
+            try:number=Decimal(str(c['expected']))
+            except InvalidOperation:raise ValueError('Invalid numeric expectation') from None
             if not number.is_finite() or isinstance(c['expected'],bool):raise ValueError('Finite numeric expectation required')
             if c['operator']=='min_count' and (number<1 or number!=int(number)):raise ValueError('Positive row count required')
     return plan
@@ -88,7 +90,7 @@ def compare(actual,check):
     op=check['operator'];expected=check['expected']
     if op=='nonempty':return meaningful(actual)
     if op=='equals':return type(actual) is type(expected) and actual==expected
-    if op=='min_count':return isinstance(actual,(list,dict)) and len(actual)>=int(check['expected'])
+    if op=='min_count':return type(actual) is int and actual>=int(check['expected'])
     if isinstance(actual,bool):return False
     try:
         a,b,t=map(lambda x:Decimal(str(x)),(actual,expected,check['tolerance']))
@@ -112,7 +114,10 @@ def receipt_valid(contract,receipt,phase):
                 definition=definitions[key]
                 if c.get('criterion')!=definition['criterion'] or c.get('expected')!=definition['expected'] or not compare(c.get('actual'),definition):return False
             elif not result_ready(c.get('actual'),contract['output_type']):return False
-        if contract['output_type'] in {'file','presentation'} and not receipt['outputs']:return False
+        paths={c['path'] for role in ('qa','financial_analyst') for c in contract[role]['checks'] if c['source']!='result'}
+        outputs=receipt['outputs']
+        if len(outputs)!=len(paths) or {o['path'] for o in outputs}!=paths or any(not re.fullmatch(r'[a-f0-9]{64}',o['sha256']) for o in outputs):return False
+        if contract['output_type'] in {'file','presentation'} and not outputs:return False
         return receipt['passed'] is True and all(c['passed'] is True for c in checks)
     except (KeyError,ValueError,TypeError):return False
 

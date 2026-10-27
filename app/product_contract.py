@@ -46,3 +46,9 @@ class AcceptancePlan(StrictModel):
     checks:list[AcceptanceCheck]=Field(default_factory=list,max_length=30)
     unsupported_criteria:list[int]=Field(default_factory=list,max_length=30)
     not_applicable_reason:str=Field(default='',max_length=1500)
+
+    @model_validator(mode='after')
+    def valid_checks(self):
+        from app.product_assurance import validate_plan
+        validate_plan(self.model_dump(),10000)
+        return self

@@ -62,7 +62,7 @@ def accept(id:uuid.UUID,data:Approval,user=Depends(current_user)):
         if not record or record['status']!='ACCEPTANCE':raise db.Conflict('Deploy and verify product before acceptance')
         if story['revision']!=data.revision or story['plan_digest']!=data.plan_digest:raise db.Conflict('Plan changed')
         from app.product_assurance import ready
-        if not ready(record,story):raise db.Conflict('Проверки результата отсутствуют, устарели или не пройдены')
+        if not ready(record,story) or not products.outputs_ready(record):raise db.Conflict('Проверки результата отсутствуют, устарели или не пройдены')
         from app.delivery import broker
         if not broker('/gate',{'pulls':record['git']['pulls']})['eligible']:raise db.Conflict('Independent Git review/CI/merge gate incomplete')
         products.update(record['id'],accepted=True)

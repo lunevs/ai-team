@@ -83,7 +83,9 @@ def evaluate(contract,phase,collected):
     for role in ('qa','financial_analyst'):
         for c in contract[role]['checks']:
             try:
-                actual=pointer(data(c['source'],c['path']),c['pointer']);passed=compare(actual,c)
+                actual=pointer(data(c['source'],c['path']),c['pointer'])
+                if c['operator']=='min_count':actual=len(actual) if isinstance(actual,(list,dict)) else None
+                passed=compare(actual,c)
                 reason='' if passed else 'Фактическое значение не соответствует независимой проверке'
             except Exception:actual=None;passed=False;reason='Не удалось получить или прочитать результат проверки'
             checks.append({'role':role,'id':c['id'],'criterion':c['criterion'],'description':c['description'],'passed':passed,
