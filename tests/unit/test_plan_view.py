@@ -13,7 +13,7 @@ def test_proposal_marks_unsupported_tasks_and_propagates_dependencies():
        'feasibility':{'status':'NEEDS_PLATFORM','gaps':[{'capability':'external_bi'}],'criteria':[{'task_keys':['bi'],'capability_ids':['external_bi']}]}}
     labels=task_states(s)
     assert 'не может' in labels['bi'] and 'Ждёт' in labels['release']
-    assert 'не подтверждена' in labels['data']
+    assert not labels['data']
     assert ROLES['data_developer']=='Разработчик данных'
 
 
