@@ -12,7 +12,7 @@ STATE=ROOT/'.local/stage10-integration'
 NAME='ai-stage10-integration-postgres'
 
 def main():
- STATE.mkdir(mode=0o700,exist_ok=False)
+ STATE.mkdir(parents=True,mode=0o700,exist_ok=False)
  password=secrets.token_hex(24)
  def env(name,values):
   path=STATE/name;path.write_text('\n'.join(k+'='+v for k,v in values.items())+'\n');path.chmod(0o600);return str(path)

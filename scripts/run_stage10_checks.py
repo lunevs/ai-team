@@ -54,7 +54,7 @@ def images(qa):
 def main():
     from app.workspace_policy import snapshot
     from scripts.workspace_operator import check_snapshot
-    STATE.mkdir(mode=0o700,exist_ok=False);host.STATE=STATE/'operator'
+    STATE.mkdir(parents=True,mode=0o700,exist_ok=False);host.STATE=STATE/'operator'
     try:
         # Research uses a specific approved source from the immutable plan, independently of runtime.
         content,_=snapshot({}, {'workspace_id':str(uuid.uuid4()),'task_id':379,'runtime_profile':PROFILE,'sources':[SOURCE],'research_source':'states'})

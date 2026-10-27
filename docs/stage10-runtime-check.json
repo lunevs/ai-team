@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "runtime": "api/worker/ui/git-broker updated; migration 012 applied",
+  "capabilities_version": 2,
+  "profile": "airflow-postgres-v1",
+  "existing_user_story": "revision/status/approval/usage/product unchanged",
+  "legacy_package": "downloaded, SHA256 matches, current policy accepts it",
+  "operator": "manual; no autostart installed",
+  "llm_in_stage10_checks": false
+}
