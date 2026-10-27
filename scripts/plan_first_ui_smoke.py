@@ -1,5 +1,5 @@
 """UI-only fixture: never approves or changes the source story."""
-import json,os
+import json,os,sys
 import httpx
 from streamlit.testing.v1 import AppTest
 
@@ -20,6 +20,9 @@ def main():
             else:value=[]
             return httpx.Response(200,json=value)
     httpx.Client=Client
+    original_path=list(sys.path)
+    sys.path[:]=[p for p in sys.path if p not in {'','/workspace'}]
+    for name in ('ui.plan_view','ui'):sys.modules.pop(name,None)
     try:
         def render():
             a=AppTest.from_file('/workspace/ui/main.py');a.session_state['story_id']=sid;a.run(timeout=30)
@@ -35,5 +38,7 @@ def main():
         story.update(approved=True,status='IN_PROGRESS');story['feasibility'].update(status='READY',gaps=[],criteria=[])
         a=render();assert any(e.value=='Команда' for e in a.subheader) and any(url.endswith('/team') for url in calls)
         return {'status':'passed','scope':'Explicit Streamlit fixture; no approval or source story mutation','checks':['plan_and_roles_before_approval','no_technical_metrics','no_agent_cards_before_approval','unsupported_work_explicit','agent_cards_after_approval']}
-    finally:httpx.Client=original
+    finally:
+        httpx.Client=original
+        sys.path[:]=original_path
 if __name__=='__main__':print('PLAN_FIRST_UI_RESULT='+json.dumps(main(),ensure_ascii=False))
