@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "scope": "Explicit Streamlit fixture; no approval or source story mutation",
+  "checks": [
+    "plan_and_roles_before_approval",
+    "no_technical_metrics",
+    "no_agent_cards_before_approval",
+    "unsupported_work_explicit",
+    "agent_cards_after_approval"
+  ]
+}

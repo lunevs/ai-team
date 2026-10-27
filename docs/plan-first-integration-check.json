@@ -1,0 +1,5 @@
+{
+  "status": "passed",
+  "database": "disposable PostgreSQL; no team tables read or changed",
+  "output": ".................                                                        [100%]\n17 passed in 2.23s"
+}

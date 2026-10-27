@@ -1,0 +1,5 @@
+{
+  "status": "passed",
+  "tests_passed": 159,
+  "scope": "Isolated source tests with no network; proposal task labels, explicit exclusions and capability caveats"
+}
