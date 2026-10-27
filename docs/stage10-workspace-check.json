@@ -1,0 +1,7 @@
+{
+  "passed": true,
+  "tests_run": 2,
+  "tests_present": true,
+  "error_type": "",
+  "test_output": "WORKSPACE_RESULT={\"passed\": true, \"tests_run\": 2, \"tests_present\": true}\n..\n----------------------------------------------------------------------\nRan 2 tests in 0.119s\n\nOK\n\nDAG import check: 2026-10-27T10:44:10.789063Z [warning  ] Importing DagBag from airflow.models.dagbag is deprecated and will be removed in a future release. Please import from airflow.dag_processing.dagbag instead. [py.warnings] category=DeprecatedImportWarning filename=<string> lineno=1\n2026-10-27T10:44:11.506288Z [info     ] setup plugin alembic.autogenerate.schemas [alembic.runtime.plugins] loc=plugins.py:37\n2026-10-27T10:44:11.506478Z [info     ] setup plugin alembic.autogenerate.tables [alembic.runtime.plugins] loc=plugins.py:37\n2026-10-27T10:44:11.506567Z [info     ] setup plugin alembic.autogenerate.types [alembic.runtime.plugins] loc=plugins.py:37\n2026-10-27T10:44:11.506641Z [info     ] setup plugin alembic.autogenerate.constraints [alembic.runtime.plugins] loc=plugins.py:37\n2026-10-27T10:44:11.506698Z [info     ] setup plugin alembic.autogenerate.defaults [alembic.runtime.plugins] loc=plugins.py:37\n2026-10-27T10:44:11.506751Z [info     ] setup plugin alembic.autogenerate.comments [alembic.runtime.plugins] loc=plugins.py:37\n2026-10-27T10:44:11.792964Z [info     ] Filling up the DagBag from /opt/airflow/dags [airflow.dag_processing.dagbag.DagBag] loc=dagbag.py:469\n"
+}

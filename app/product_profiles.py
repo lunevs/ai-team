@@ -115,7 +115,7 @@ PostgreSQL 17.6, LocalExecutor parallelism=1. Бюджет контейнеро�
 Сгенерировать hex: `python3 -c "import secrets;print(secrets.token_hex(32))"`;
 Fernet: `python3 -c "import secrets,base64;print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"`.
 
-1. `docker compose build` (первоначально нужен доступ Docker Hub/PyPI).
+1. `docker compose build app airflow-api` (первоначально нужен доступ Docker Hub/PyPI).
 2. `docker compose up -d --wait postgres`.
 3. `docker compose run --rm --no-deps --user 0 --cap-add CHOWN --entrypoint chown app 10001:0 /data`;
    `docker compose run --rm --no-deps --user 0 --cap-add CHOWN --entrypoint chown airflow-api 50000:0 /opt/airflow/logs`.

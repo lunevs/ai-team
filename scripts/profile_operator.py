@@ -84,7 +84,7 @@ def start(context,env,project):
 
 
 def cleanup(context,env,project,volumes=False):
-    compose(context,env,project,'down',*(['--volumes'] if volumes else []),'--remove-orphans',timeout=90,check=False)
+    compose(context,env,project,'down','--timeout','2',*(['--volumes'] if volumes else []),'--remove-orphans',timeout=90,check=False)
 
 
 def check(content,operation):
@@ -97,7 +97,7 @@ def check(content,operation):
         directory=Path(temporary);_,context=host().extract(content,directory);env=directory/'runtime.env';private_env(env)
         phase='build'
         try:
-            compose(context,env,project,'build',timeout=600)
+            compose(context,env,project,'build','app','airflow-api',timeout=600)
             tag=f"ai-product-{metadata['product_key']}:{metadata['version']}"
             report['result']['airflow_image_id']=host().docker('image','inspect','--format','{{.Id}}',f"ai-product-airflow-{metadata['product_key']}:{metadata['version']}").stdout.decode().strip()
             report['image_id']=host().docker('image','inspect','--format','{{.Id}}',tag).stdout.decode().strip()
