@@ -146,6 +146,10 @@ def test_database(name,directory):
 
 
 def check_package(content,operation):
+    metadata,_=inspect_package(content)
+    if metadata.get('runtime_profile')=='airflow-postgres-v1':
+        from scripts.profile_operator import check
+        return check(content,operation)
     report={'passed':False,'tests_passed':False,'health_passed':False,'image_id':'','result':{}}
     name='ai-product-check-'+str(operation['operation_id'])[:12]
     try:
@@ -259,6 +263,10 @@ def provision_database(key):
 
 
 def deploy_package(content,operation):
+    metadata,_=inspect_package(content)
+    if metadata.get('runtime_profile')=='airflow-postgres-v1':
+        from scripts.profile_operator import deploy
+        return deploy(content,operation)
     report={'passed':False,'health_passed':False,'image_id':operation['qa']['image_id'],'result':{}}
     metadata,_=inspect_package(content);key=metadata['product_key']
     name='ai-product-'+key;proxy=name+'-gateway';old=name+'-rollback'
@@ -368,6 +376,8 @@ def once():
         result=api('/product-operations/'+operation['id']+'/report',token=operator,data=report)
     except urllib.error.HTTPError as exc:
         if exc.code==409 and operation['operation']=='deploy' and report.get('passed'):
+            from scripts.profile_operator import stop_deployed
+            if stop_deployed(operation['product_key'],report.get('image_id')):raise
             name='ai-product-'+operation['product_key']
             current=docker('inspect',name,check=False)
             if current.returncode==0 and json.loads(current.stdout)[0]['Image']==report.get('image_id'):

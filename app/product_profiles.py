@@ -161,6 +161,38 @@ Compose project новой версии с сохранением UID/GID/пра
 Для внешней установки используйте согласованный backup инструмент/снимок диска и проверьте
 восстановление на копии до обновления. Онлайн backup: pg_dump отдельно product и airflow;
 восстановление — в пустые БД теми же ролями до старта Airflow/приложения.
+### Команды автономного backup/restore
+
+Из каталога старого пакета, со свободным местом для второй копии данных:
+
+```sh
+OLD_PROJECT=product-{key}
+NEW_PROJECT=product-{key}-next
+docker compose -p "$OLD_PROJECT" stop
+mkdir -p backup
+for V in postgres-data product-data airflow-logs; do
+  docker run --rm --network none --read-only --user 0 --cap-drop ALL --cap-add DAC_OVERRIDE --entrypoint sh --mount "type=volume,source=${{OLD_PROJECT}}_${{V}},target=/data,readonly" --mount "type=bind,source=$(pwd)/backup,target=/backup" {POSTGRES_IMAGE} -c "umask 077; tar -C /data -czf /backup/$V.tgz ."
+done
+```
+
+Сохраните backup, старый пакет и приватный .env вне нового каталога. В новом каталоге
+с новой версией скопируйте тот же .env и backup, задайте те же OLD_PROJECT/NEW_PROJECT.
+Новые volumes должны отсутствовать; не распаковывайте поверх рабочих данных.
+
+```sh
+for V in postgres-data product-data airflow-logs; do
+  docker volume create --label ai-team.product-managed=true "${{NEW_PROJECT}}_${{V}}"
+  docker run --rm --network none --read-only --user 0 --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER --entrypoint sh --mount "type=volume,source=${{NEW_PROJECT}}_${{V}},target=/data" --mount "type=bind,source=$(pwd)/backup,target=/backup,readonly" {POSTGRES_IMAGE} -c "tar -C /data -xzf /backup/$V.tgz"
+done
+```
+
+Повторите шаги установки 2–7 с `docker compose -p "$NEW_PROJECT"` вместо
+`docker compose`. При неуспехе остановите новую версию; из СТАРОГО каталога
+выполните `docker compose -p "$OLD_PROJECT" up -d`. Старые volumes и .env сохраняются.
+Сравните контрольные количества/суммы до обновления и после восстановления.
+Запуск host-оператором использует собственные имена project из приватного current.json;
+для него предпочтителен встроенный снимок/возврат версии, а не эти имена по умолчанию.
+
 `docker compose down` сохраняет данные; НЕ использовать `down -v` для рабочей установки.
 Файлы: `docker compose cp app:/data ./results`. Общий Docker-хост для нескольких продуктов
 разрешён; разные project names, сети, роли, volumes, секреты и порты обязательны.

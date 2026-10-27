@@ -19,7 +19,7 @@ def writable(role,path):
     safe_path(path)
     if path.startswith('docs/tasks/'):return False
     if role=='application_developer':return True
-    if role=='data_developer':return path.startswith(('data/','migrations/','tests/','docs/'))
+    if role=='data_developer':return path.startswith(('data/','dags/','migrations/','tests/','docs/'))
     if role=='qa':return path.startswith(('tests/','docs/'))
     return path.startswith('docs/')
 
@@ -35,6 +35,7 @@ def apply_action(files,role,action):
                 if action.content in line:hits.append({'path':path,'line':number,'text':line[:200]})
                 if len(hits)>=30:return files,{'matches':hits,'truncated':True},None
         return files,{'matches':hits},None
+    if action.operation=='source':return files,{'source_request':action.path},'research:'+action.path
     if action.operation in ['check','finish']:return files,{'summary':action.summary},'continue' if action.operation=='check' else 'finish'
     path=safe_path(action.path)
     if action.operation=='read':
@@ -57,6 +58,8 @@ def apply_action(files,role,action):
 
 def snapshot(files,metadata):
     validate_workspace(files)
+    validate_profile_metadata(metadata)
+    validate_sources(files,metadata.get('runtime_profile','python-locked-v1'))
     manifest=metadata|{'format':1,'source_digest':source_digest(files),'files':{p:{'sha256':file_hash(t),'size':len(t.encode())} for p,t in sorted(files.items())}}
     output=io.BytesIO()
     with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as z:
@@ -83,6 +86,8 @@ def inspect_snapshot(content):
             if len(data)!=expected['size'] or hashlib.sha256(data).hexdigest()!=expected['sha256']:raise ValueError('Snapshot content changed')
             files[path]=data.decode()
         validate_workspace(files)
+        validate_profile_metadata(manifest)
+        validate_sources(files,manifest.get('runtime_profile','python-locked-v1'))
         if source_digest(files)!=manifest['source_digest']:raise ValueError('Workspace digest changed')
         return manifest,files
 
@@ -90,3 +95,13 @@ def inspect_snapshot(content):
 def repeated_action(files,action,observations):
     signature=file_hash(json.dumps({'source_digest':source_digest(files),'action':action.model_dump(mode='json')|{'summary':''}},sort_keys=True,ensure_ascii=False))
     return signature,sum(row.get('_action_signature')==signature for row in observations)>=2
+
+
+def validate_profile_metadata(metadata):
+    from app.source_policy import sources_policy
+    profile=metadata.get('runtime_profile','python-locked-v1')
+    if profile not in {'python-locked-v1','airflow-postgres-v1'}:raise ValueError('Unsupported workspace profile')
+    sources=sources_policy(metadata.get('sources',[]))
+    if sources and profile!='airflow-postgres-v1':raise ValueError('Sources require isolated profile')
+    request=metadata.get('research_source')
+    if request and request not in {s['id'] for s in sources}:raise ValueError('Source not approved in the plan')

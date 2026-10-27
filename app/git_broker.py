@@ -252,17 +252,24 @@ def ready(authorization:str=Header(default='')):
     product=github(REPO+'/git/ref/heads/'+product_ref,missing=True)
     product_sha=product['object']['sha'] if product else None
     product_contract=github(REPO+'/contents/app/product_runtime_contract.json?ref='+product_sha,missing=True) if product_sha else None
+    product_profiles=[]
     try:
-        product_valid=product_contract is not None and json.loads(base64.b64decode(product_contract['content']))=={
-            'version':1,'profile':'python-locked-v1','required_check':'product-checks'}
+        value=json.loads(base64.b64decode(product_contract['content'])) if product_contract else {}
+        product_valid=value=={'version':1,'profile':'python-locked-v1','required_check':'product-checks'} or value=={'version':2,'profiles':['python-locked-v1','airflow-postgres-v1'],'required_check':'product-checks'}
+        if product_valid:product_profiles=value.get('profiles',[value.get('profile')])
     except (KeyError,ValueError,TypeError):product_valid=False
+
     workspace_ref=os.getenv('GITHUB_WORKSPACE_BASE_REF','release/370')
     workspace=github(REPO+'/git/ref/heads/'+workspace_ref,missing=True)
     workspace_sha=workspace['object']['sha'] if workspace else None
     contract=github(REPO+'/contents/app/workspace_runtime_contract.json?ref='+workspace_sha,missing=True) if workspace_sha else None
-    try:workspace_valid=contract is not None and json.loads(base64.b64decode(contract['content']))=={'version':1,'required_check':'workspace-checks','profile':'python-locked-v1'}
+    workspace_profiles=[]
+    try:
+        value=json.loads(base64.b64decode(contract['content'])) if contract else {}
+        workspace_valid=value=={'version':1,'required_check':'workspace-checks','profile':'python-locked-v1'} or value=={'version':2,'required_check':'workspace-checks','profiles':['python-locked-v1','airflow-postgres-v1']}
+        if workspace_valid:workspace_profiles=value.get('profiles',[value.get('profile')])
     except (ValueError,KeyError,TypeError):workspace_valid=False
-    return {'configured':True,'base_sha':result['object']['sha'],'base_ready':valid,
+    return {'configured':True,'product_profiles':product_profiles,'workspace_profiles':workspace_profiles,'base_sha':result['object']['sha'],'base_ready':valid,
         'workspace_base_sha':workspace_sha,'workspace_base_ready':workspace_valid,'workspace_base_ref':workspace_ref,
         'product_base_sha':product_sha,'product_base_ready':product_valid,'product_base_ref':product_ref}
 
@@ -274,6 +281,14 @@ def publish(data:Publish,authorization:str=Header(default='')):
     if data.workspace_task and data.product_package:raise HTTPException(422,'Ambiguous publication profile')
     field='workspace_base_ready' if data.workspace_task or data.workspace_delivery else 'product_base_ready' if data.product_package else 'base_ready'
     if not readiness.get(field):raise HTTPException(409,'Merge the matching runtime implementation and product CI before publication')
+    if data.workspace_task or data.workspace_delivery or data.product_package:
+        allowed=readiness.get('workspace_profiles' if data.workspace_task or data.workspace_delivery else 'product_profiles',['python-locked-v1'])
+        for task in data.tasks:
+            for path,encoded in task.files.items():
+                if path.endswith(('/product.json','/workspace.json')):
+                    try:profile=json.loads(base64.b64decode(encoded)).get('runtime_profile','python-locked-v1')
+                    except (ValueError,TypeError):raise HTTPException(422,'Invalid profile manifest')
+                    if profile not in allowed:raise HTTPException(409,'Merge the selected profile runtime and CI before publication')
     base=readiness['workspace_base_sha'] if data.workspace_task or data.workspace_delivery else readiness['product_base_sha'] if data.product_package else readiness['base_sha']
     if data.previous_release:
         prior=data.previous_release

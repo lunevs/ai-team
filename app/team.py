@@ -161,6 +161,8 @@ def project_team(story, results, completions, calls, links, packages, tracker_av
                 label={'RUNNING':('Исправляет замечания' if current.get('attempt',0) else 'Работает над задачей') if worker_active else 'Готовится продолжить',
                     'CHECK_PENDING':'Ждёт проверки изменений','CHECKED':'Готовит изменения к согласованию',
                     'CHECK_FAILED':'Разбирает ошибку проверки','ESCALATED':'Аналитик выбирает способ решения','WAITING_GITHUB':'Ждёт готовности публикации','REVIEW':'Ждёт согласования изменений','FAILED':'Требуется исправление'}
+                if current['state']=='CHECK_PENDING' and (current.get('intent') or '').startswith('research:'):
+                    label['CHECK_PENDING']='Ждёт получения данных для изучения источника'
                 card['current']=label.get(current['state'],'Ожидает продолжения')+': '+title
             else:
                 pending=next((row for row in own if row['state']=='PENDING'),None)

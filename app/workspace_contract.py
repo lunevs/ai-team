@@ -11,7 +11,7 @@ from app.product_policy import safe_path,validate_sources,MAX_PACKAGE
 
 
 class WorkspaceAction(StrictModel):
-    operation:Literal['list','read','search','write','edit','delete','check','finish']
+    operation:Literal['list','read','search','write','edit','delete','check','finish','source']
     path:str=Field(default='',max_length=180)
     content:str=Field(default='',max_length=90000)
     old_text:str=Field(default='',max_length=20000)

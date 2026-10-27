@@ -1,1 +1,1 @@
-{"version":1,"profile":"python-locked-v1","required_check":"product-checks"}
+{"version": 2, "profiles": ["python-locked-v1", "airflow-postgres-v1"], "required_check": "product-checks"}
