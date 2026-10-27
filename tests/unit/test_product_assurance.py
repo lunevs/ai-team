@@ -119,3 +119,32 @@ def test_incomplete_plan_receives_feedback_and_a_fresh_generation_key(monkeypatc
     assert len(plan.checks)==2 and len(calls)==2
     assert calls[0][1]!=calls[1][1] and calls[1][0]['validation_feedback']
     assert all('solution' not in context and 'files' not in context for context,_ in calls)
+
+
+def test_gateway_retries_transient_connection_reset_before_reporting_ready(monkeypatch):
+    from scripts import product_operator as host
+    calls=[]
+    class Response:
+        status=200
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+    def open_url(*args,**kwargs):
+        calls.append(args[0])
+        if len(calls)==1:raise ConnectionResetError('gateway is starting')
+        return Response()
+    monkeypatch.setattr(host.urllib.request,'urlopen',open_url)
+    monkeypatch.setattr(host.time,'sleep',lambda _:None)
+    host.gateway_health(12345)
+    assert calls==['http://127.0.0.1:12345/health']*2
+
+
+def test_gateway_exhausted_retry_is_a_health_failure(monkeypatch):
+    from scripts import product_operator as host
+    ticks=[0]
+    monkeypatch.setattr(host.time,'monotonic',lambda:ticks[0])
+    def reset(*a,**kw):
+        ticks[0]=21
+        raise ConnectionResetError()
+    monkeypatch.setattr(host.urllib.request,'urlopen',reset)
+    with pytest.raises(host.OperationFailed) as error:host.gateway_health(12345)
+    assert error.value.kind=='HealthFailed'

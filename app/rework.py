@@ -150,7 +150,12 @@ def product_failure(story,record,findings,evidence,actual_failure=False):
             products.update(record['id'],status='PUBLISHED',review=review,git=record['git']|{'dismissed_feedback':feedback_key(evidence)})
             workspaces.schedule(story['id'],30)
         else:
-            products.update(record['id'],status='READY_TO_PUBLISH',review=review)
+            if record.get('assurance_version')==1:
+                # Dismissing a false finding is not a fresh approval by its reviewer.
+                review['effective_approved']=False
+                with db.connection() as c:
+                    c.execute("UPDATE product_releases SET status='CHECKED',review_round=review_round+1,review=%s,accepted=false WHERE id=%s",(Jsonb(review),record['id']))
+            else:products.update(record['id'],status='READY_TO_PUBLISH',review=review)
             workspaces.schedule(story['id'])
         return
     epic=story['plan']['epics'][-1]
