@@ -30,15 +30,28 @@ def explicit_capabilities(text):
     """Conservative guard for explicit requests; model cannot omit obvious blockers."""
     checks={'airflow':r'\bair\s?flow\b', 'scheduled_jobs':r'ежеднев|ежесуточ|каждый день|раз в сутки|по расписанию',
             'external_http':r'https?://|скачив|загруз\w*[^.\n]{0,80}(?:сайт|портал|интернет)',
-            'external_bi':r'\b(?:superset|metabase|power\s?bi|tableau)\b',
+            'external_bi':r'\b(?:superset|metabase|power\s?bi|tableau)\b|\bBI[\s-]*(?:систем|платформ)',
             'xml_zip':r'\b(?:xml|zip)\b', 'xlsx':r'\b(?:xlsx|excel)\b', 'pptx':r'\b(?:pptx|powerpoint)\b'}
     found=set()
     for key,pattern in checks.items():
         for match in re.finditer(pattern,text,re.I):
             # Do not turn explicit exclusions into mandatory capabilities.
-            if not re.search(r'(?:без|не нужен|не нужна|не требуется)\s*$',text[max(0,match.start()-30):match.start()],re.I):
+            if not (re.search(r'(?:без|не нужен|не нужна|не требуется)\s*$',text[max(0,match.start()-30):match.start()],re.I) or re.match(r'[^.\n,;]{0,35}(?:не поддерж|не поставля|не требу|не нуж|отсутств)',text[match.end():],re.I) or re.search(r'отсутстви[ея]\s*$',text[max(0,match.start()-30):match.start()],re.I)):
                 found.add(key)
     return found
+
+
+def scope_exclusions(answers):
+    """Only explicit customer scope changes, never capability caveats from a model."""
+    patterns={'external_bi':r'\b(?:superset|metabase|power\s?bi|tableau|BI[\s-]*(?:систем|платформ))',
+              'pptx':r'\b(?:pptx|powerpoint)\b|презентаци'}
+    result=set()
+    for key,pattern in patterns.items():
+        for match in re.finditer(pattern,answers,re.I):
+            before=answers[max(0,match.start()-45):match.start()]
+            after=answers[match.end():]
+            if re.search(r'(?:без|вместо|отказываюсь от)\s*(?:отдельн\w*\s*)?$',before,re.I) or re.match(r'[^.;\n]{0,25}(?:не нужна|не нужен|не требуется|не нужны)',after,re.I):result.add(key)
+    return result
 
 
 def evaluate(story, pm, plan, assessment):
@@ -57,7 +70,9 @@ def evaluate(story, pm, plan, assessment):
         rows.append({'criterion_index':row.criterion_index,'criterion':pm['acceptance_criteria'][row.criterion_index],
                      'task_keys':row.task_keys,'roles':sorted({tasks[k]['role'] for k in row.task_keys if k in tasks}),
                      'capability_ids':row.capability_ids,'verification':row.verification})
-    required.update(explicit_capabilities(story['text']+'\n'+story.get('answers','')+'\n'+'\n'.join(pm['acceptance_criteria'])))
+    answers=story.get('answers','')
+    required.update((explicit_capabilities(story['text'])|explicit_capabilities(answers))-scope_exclusions(answers))
+    required.update(explicit_capabilities('\n'.join(pm['acceptance_criteria'])))
     if len(plan['epics'])>1:required.add('multi_epic')
     if len(plan['epics'])>profile['limits']['epics']:issues.append('Число эпиков превышает технический размер одного плана.')
     if plan.get('development_mode')=='workspace':required.add('incremental_workspace')

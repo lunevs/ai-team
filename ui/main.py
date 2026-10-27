@@ -33,14 +33,14 @@ def select_product_story(story_id):
 
 with st.sidebar:
     st.header('Новая история')
-    mode=st.selectbox('Тип результата',['product','credit_demo'],format_func=lambda x:'Самостоятельный продукт' if x=='product' else 'Кредитное демо')
+    mode='product'
     with st.form('new-story'):
         text=st.text_area('User story',height=180,placeholder='Создать витрину анализа кредитного портфеля по месяцам…')
         synthetic=st.checkbox('Используются только синтетические или публичные данные')
         submitted=st.form_submit_button('Создать историю',type='primary')
     if submitted:
         if not synthetic or len(text.strip())<20:
-            st.warning('Опишите задачу и подтвердите синтетические данные.')
+            st.warning('Опишите задачу и подтвердите использование публичных или синтетических данных.')
         else:
             if st.session_state.get('submitted_text')!=(mode,text):
                 st.session_state['request_key']=str(uuid.uuid4())
@@ -53,18 +53,11 @@ with st.sidebar:
     stories=request('/stories') or []
     if stories:
         ids=[s['id'] for s in stories]
-        labels={s['id']:f"{s['status']} · {s['text'][:65]}" for s in stories}
+        labels={s['id']:s['text'][:80] for s in stories}
         if st.session_state.get('selected_story') not in ids:
             st.session_state['selected_story']=st.session_state.get('story_id') if st.session_state.get('story_id') in ids else ids[0]
         selected=st.selectbox('Истории',ids,key='selected_story',format_func=labels.get)
         st.session_state['story_id']=selected
-    with st.expander('Реестр продуктов'):
-        registered=request('/products') or []
-        if not registered:st.caption('Продуктов пока нет. Создайте user story в режиме самостоятельного продукта.')
-        for product in registered:
-            st.button(product['product_key']+' · '+product['version']+' · '+product['status'],
-                key='registry-'+product['id'],on_click=select_product_story,args=(product['story_id'],))
-    st.button('Обновить')
 
 id=st.session_state.get('story_id')
 if not id:
@@ -72,9 +65,43 @@ if not id:
     st.stop()
 @st.fragment(run_every='5s')
 def interaction_panel(id):
-    st.caption('Автообновление каждые 5 секунд · Проверено: '+datetime.now(timezone.utc).strftime('%H:%M:%S UTC'))
+    # Proposal refreshes automatically; technical counters stay out of the start screen.
     story=request('/stories/'+id)
     if story is None:st.stop()
+    if not story['approved']:
+        from ui.plan_view import ROLES,task_states
+        st.subheader('План от продуктового менеджера')
+        st.write(story['text'])
+        if story.get('answers'):st.write('**Ваши уточнения:** '+story['answers'])
+        if not story.get('plan'):
+            if story['status']=='FAILED':st.error('Сервис планирования временно недоступен. План ещё не подготовлен; повторите планирование.' if story.get('error_type')=='RetryableProviderError' else 'Не удалось подготовить план. Требуется повторить планирование.')
+            else:st.info('Менеджер и системный аналитик готовят этапы, задачи и назначают исполнителей. Реализация ещё не началась.')
+        if story.get('pm'):st.write('**Цель:** '+story['pm']['goal'])
+        states=task_states(story)
+        titles={t['key']:t['title'] for e in (story.get('plan') or {}).get('epics',[]) for t in e['tasks']}
+        for index,epic in enumerate((story.get('plan') or {}).get('epics',[]),1):
+            st.markdown(f"### Этап {index}. {epic['title']}")
+            for task in epic['tasks']:
+                st.write('**'+task['title']+'** — '+ROLES.get(task['role'],task['role']))
+                st.caption(states[task['key']])
+                if task.get('depends_on'):st.caption('После: '+', '.join(titles.get(k,k) for k in task['depends_on']))
+        feasibility=story.get('feasibility') or {}
+        for gap in feasibility.get('gaps',[]):
+            st.error('Сейчас команда не может выполнить: '+gap['title']+'. '+gap['reason'])
+        for issue in feasibility.get('analysis_issues',[]):st.warning('Нужно уточнить способ реализации: '+issue)
+        if story.get('questions'):
+            with st.expander('Уточнения менеджера для согласования плана'):
+                for question in story['questions']:st.write('• '+question)
+        if story.get('plan') and story['status']=='PLAN_REVIEW':
+            if st.button('Ок, начать работу по этому плану',type='primary'):
+                if request('/stories/'+id+'/approve-plan','POST',{'revision':story['revision'],'plan_digest':story['plan_digest']}):st.rerun()
+        if story['status'] in ['BLOCKED','FAILED']:
+            if story.get('plan'):st.info('План показан полностью. Невыполнимые части не будут запущены или незаметно заменены. Уточните объём или предложите допустимую замену, чтобы менеджер подготовил план для согласования.')
+            with st.form('proposal-changes-'+id):
+                changes=st.text_area('Уточнения к плану',key='proposal-'+id+'-'+str(story['revision']))
+                if st.form_submit_button('Передать менеджеру / повторить планирование'):
+                    if request('/stories/'+id+'/resume','POST',{'answers':changes}):st.rerun()
+        return
     grafana=os.getenv('GRAFANA_PUBLIC_URL','').rstrip('/')
     if grafana=='http://127.0.0.1:3001':
         st.link_button('Наблюдаемость истории · Grafana',grafana+'/d/ai-team-operations?var-story_id='+id)
@@ -432,6 +459,8 @@ interaction_panel(id)
 
 @st.fragment(run_every='10s')
 def team_panel(story_id):
+    current=request('/stories/'+story_id)
+    if not current or not current.get('approved'):return
     st.subheader('Команда')
     st.caption('По выбранной истории · обновление каждые 10 секунд')
     data=request('/stories/'+story_id+'/team')
