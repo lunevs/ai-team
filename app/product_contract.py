@@ -21,6 +21,8 @@ class ProductSolution(ProductDefinition):
         validate_sources(self.files)
         if 'app.py' not in self.files or not any(k.startswith('tests/test_') and k.endswith('.py') for k in self.files):
             raise ValueError('app.py and unittest tests are required')
+        if self.runtime_profile=='airflow-postgres-v1' and not any(k.startswith('dags/') and k.endswith('.py') for k in self.files):
+            raise ValueError('Airflow profile requires a DAG')
         return self
 
 class ProductReview(StrictModel):
