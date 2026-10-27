@@ -31,7 +31,7 @@ def explicit_capabilities(text):
     checks={'airflow':r'\bair\s?flow\b', 'scheduled_jobs':r'ежеднев|ежесуточ|каждый день|раз в сутки|по расписанию',
             'external_http':r'https?://|скачив|загруз\w*[^.\n]{0,80}(?:сайт|портал|интернет)',
             'external_bi':r'\b(?:superset|metabase|power\s?bi|tableau)\b',
-            'xlsx':r'\b(?:xlsx|excel)\b', 'pptx':r'\b(?:pptx|powerpoint)\b'}
+            'xml_zip':r'\b(?:xml|zip)\b', 'xlsx':r'\b(?:xlsx|excel)\b', 'pptx':r'\b(?:pptx|powerpoint)\b'}
     found=set()
     for key,pattern in checks.items():
         for match in re.finditer(pattern,text,re.I):
@@ -64,10 +64,15 @@ def evaluate(story, pm, plan, assessment):
     gaps=[]
     for key in sorted(required):
         cap=capabilities.get(key)
-        if cap is None or not cap['supported']:
+        isolated=key in {'airflow','scheduled_jobs','external_http','multiple_services','xlsx','xml_zip','public_source_research'}
+        selected=(plan.get('product_definition') or {}).get('runtime_profile','python-locked-v1')
+        if cap is None or not cap['supported'] or (isolated and selected!='airflow-postgres-v1'):
             gaps.append({'capability':key,'title':cap['name'] if cap else 'Уточнить техническую возможность: '+key,
-                         'reason':cap['detail'] if cap else 'Такой возможности нет в проверенном реестре.',
+                         'reason':(('Выбрать и описать профиль airflow-postgres-v1 в product_definition. ' if isolated and selected!='airflow-postgres-v1' else '')+cap['detail']) if cap else 'Такой возможности нет в проверенном реестре.',
                          'owner':'system_analyst'})
+    definition=plan.get('product_definition') or {}
+    if required & {'external_http','public_source_research'} and definition.get('runtime_profile')=='airflow-postgres-v1' and not definition.get('sources'):
+        issues.append('Аналитику нужно включить точные публичные URL/форматы/идентификаторы источников в согласуемый паспорт продукта; произвольная сеть не разрешена.')
     issues.extend(assessment.unknown_requirements)
     status='NEEDS_PLATFORM' if gaps else 'NEEDS_ANALYSIS' if issues else 'READY'
     return {'status':status,'registry_digest':profile['digest'],'registry_version':profile['version'],

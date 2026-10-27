@@ -12,6 +12,9 @@ BASE_IMAGE='python:3.12.13-slim@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9d
 MAX_PACKAGE=2_000_000
 RESERVED={'airflow_entrypoint.py','source_client.py','data/profile_marker.md','Airflow.Dockerfile','airflow-requirements.lock','source_gateway.py','sources.json','database_init.py','database-init.sql','platform_migrate.py','product.json','Dockerfile','docker-compose.yml','.dockerignore','.env.example','runtime-requirements.lock','install.md','checks.json'}
 
+BASE_RESERVED={'product.json','Dockerfile','docker-compose.yml','.dockerignore','.env.example','runtime-requirements.lock','install.md','checks.json'}
+PROFILE_RESERVED=RESERVED-BASE_RESERVED
+
 def safe_path(name):
     if not isinstance(name,str) or len(name)>180 or not re.fullmatch(r'[a-zA-Z0-9_./-]+',name):
         raise ValueError('Invalid product path')
@@ -23,11 +26,11 @@ def safe_path(name):
     return name
 
 
-def validate_sources(files):
+def validate_sources(files,profile="python-locked-v1"):
     total=0
     for name,content in files.items():
         safe_path(name)
-        if name in RESERVED or len(content)>90_000:raise ValueError('Reserved or oversized file')
+        if name in BASE_RESERVED or (profile=='airflow-postgres-v1' and name in PROFILE_RESERVED) or len(content)>90_000:raise ValueError('Reserved or oversized file')
         total+=len(content.encode())
         if name.endswith('.py'):
             ast.parse(content,filename=name) # syntax only; no import/compile/exec of model code
@@ -176,13 +179,12 @@ def inspect_package(content):
             if flat.get(name)!=text.encode():raise ValueError('Profile policy changed')
         lock=profiles.app_lock();expected_compose=profiles.compose(root,metadata['version'],metadata['sources'])
     elif profile=='python-locked-v1':
-        if any(name in flat for name in profiles.OWNED):raise ValueError('Unexpected profile files')
         lock=requirements();expected_compose=compose(root,metadata['version'],metadata['kind'])
     else:raise ValueError('Unknown runtime profile')
     if flat['Dockerfile'].decode()!=dockerfile() or flat['runtime-requirements.lock'].decode()!=lock:raise ValueError('Build policy changed')
     if json.loads(flat['docker-compose.yml'])!=expected_compose:raise ValueError('Compose policy changed')
-    sources={k:v.decode() for k,v in flat.items() if k not in RESERVED}
-    validate_sources(sources)
+    sources={k:v.decode() for k,v in flat.items() if k not in (RESERVED if profile==profiles.PROFILE else BASE_RESERVED)}
+    validate_sources(sources,profile)
     if 'app.py' not in sources or not any(k.startswith('tests/test_') for k in sources):raise ValueError('Missing source/tests')
     return metadata,flat
 

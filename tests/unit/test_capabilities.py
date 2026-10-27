@@ -9,6 +9,6 @@ def test_registry_describes_real_profile_and_has_stable_digest():
     assert first['limits']['source_total_bytes']==MAX_PACKAGE
     app=compose('p-012345678abc','1.0.1','service')['services']['app']
     assert list(app['networks'])==['products']
-    assert first['capabilities']['external_http']['supported'] is False
-    assert first['capabilities']['airflow']['supported'] is False
+    assert first['capabilities']['external_http']['supported'] is True
+    assert first['capabilities']['airflow']['supported'] is True
     assert first['capabilities']['python_service']['supported'] is True

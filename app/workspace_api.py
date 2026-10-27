@@ -3,7 +3,7 @@ import hashlib
 import uuid
 from typing import Literal
 from fastapi import APIRouter,Depends,HTTPException,Response
-from pydantic import Field
+from pydantic import Field,field_validator
 from psycopg.types.json import Jsonb
 from app import db,workspaces
 from app.auth import current_user
@@ -12,6 +12,15 @@ from app.product_api import operator
 
 router=APIRouter()
 
+class SourceObservation(StrictModel):
+    source_id:str=Field(pattern=r'^[a-z][a-z0-9_-]{0,39}$')
+    url:str=Field(max_length=2000)
+    format:Literal['csv','json','xml','zip','xlsx']
+    bytes:int=Field(ge=0,le=8_000_000)
+    sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
+    content_type:str=Field(default='',max_length=200)
+    preview:str=Field(default='',max_length=4000)
+
 class WorkspaceReceipt(StrictModel):
     operation_id:uuid.UUID
     snapshot_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
@@ -19,7 +28,13 @@ class WorkspaceReceipt(StrictModel):
     tests_run:int=Field(default=0,ge=0)
     tests_present:bool=False
     test_output:str=Field(default='',max_length=12000)
+    source_observation:dict=Field(default_factory=dict,max_length=8)
     error_type:Literal['','PolicyRejected','BuildFailed','TestsFailed','OperatorFailed']=''
+
+    @field_validator('source_observation')
+    @classmethod
+    def bounded_source_observation(cls,value):
+        return SourceObservation.model_validate(value).model_dump() if value else {}
 
 
 @router.get('/stories/{id}/workspace')
@@ -85,8 +100,18 @@ def report(id:uuid.UUID,data:WorkspaceReceipt,user=Depends(operator)):
             raise db.Conflict('Workspace receipt changed')
         if not row['lease_until'] or not conn.execute('SELECT %s>now() AS active',(row['lease_until'],)).fetchone()['active']:raise db.Conflict('Workspace lease expired')
         if data.tests_present!=(data.tests_run>0):raise db.Conflict('Invalid test accounting')
+        if len(str(data.source_observation))>9000:raise db.Conflict('Source observation too large')
+        research=(row['intent'] or '').startswith('research:')
+        if data.passed and research and data.source_observation.get('source_id')!=row['intent'].split(':',1)[1]:raise db.Conflict('Source receipt does not match research request')
+        if not research and data.source_observation:raise db.Conflict('Unexpected source receipt')
+        if research and data.passed:
+            definition=conn.execute('SELECT definition FROM product_workspaces WHERE id=%s',(row['workspace_id'],)).fetchone()['definition']
+            source=next(s for s in definition.get('sources',[]) if s['id']==data.source_observation['source_id'])
+            if any(data.source_observation.get(k)!=source[k] for k in ['url','format']):raise db.Conflict('Source URL or format changed')
+            conn.execute('INSERT INTO source_inspections(id,workspace_id,task_run_id,source_id,receipt) VALUES(%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING',
+                (data.operation_id,row['workspace_id'],row['id'],source['id'],Jsonb(data.source_observation)))
         if not data.passed:state='CHECK_FAILED'
-        elif row['intent']=='continue':state='RUNNING'
+        elif row['intent']=='continue' or (row['intent'] or '').startswith('research:'):state='RUNNING'
         else:state='CHECKED' if data.passed else 'CHECK_FAILED'
         observations=(row['observations']+[{'actual_checks':receipt}])[-12:]
         conn.execute('UPDATE workspace_tasks SET state=%s,checks=%s,observations=%s,lease_until=NULL,updated_at=now() WHERE id=%s',

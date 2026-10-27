@@ -193,8 +193,15 @@ def interaction_panel(id):
                     'CHECKED':'Проверено, готовится к согласованию','WAITING_GITHUB':'Ждёт готовности публикации',
                     'REVIEW':'Ждёт согласования изменений','CHECK_FAILED':'Команда разбирает ошибку','ESCALATED':'Нужно техническое решение аналитика','MERGED':'Изменения согласованы','FAILED':'Требуется исправление'}
                 titles={task['key']:task['title'] for epic in (story.get('plan') or {}).get('epics',[]) for task in epic['tasks']}
+                if workspace.get('source_inspections'):
+                    with st.expander('Изученные источники данных'):
+                        for inspection in workspace['source_inspections']:
+                            source=inspection['receipt'];st.write(source['source_id']+' — '+source['url'])
+                            st.caption(str(source['bytes'])+' байт · SHA256 '+source['sha256'])
+                            if source.get('preview'):st.code(source['preview'])
                 for task in workspace['tasks']:
-                    with st.expander(titles.get(task['task_key'],task.get('specification',{}).get('title',task['task_key']))+' — '+state_names.get(task['state'],task['state']),expanded=task['state'] not in ['PENDING','MERGED']):
+                    task_label='Ждёт получения данных для изучения источника' if task['state']=='CHECK_PENDING' and (task.get('intent') or '').startswith('research:') else state_names.get(task['state'],task['state'])
+                    with st.expander(titles.get(task['task_key'],task.get('specification',{}).get('title',task['task_key']))+' — '+task_label,expanded=task['state'] not in ['PENDING','MERGED']):
                         st.link_button('Задача №'+str(task['task_id']),'http://localhost:8080/work_packages/'+str(task['task_id']))
                         st.caption('Исполнитель: '+task['role']+f" · Сохранено действий: {task['sequence']} · Попытка: {task.get('attempt',0)+1}")
                         if task.get('summary'):st.write(task['summary'])

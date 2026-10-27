@@ -18,7 +18,7 @@ class ProductSolution(ProductDefinition):
 
     @model_validator(mode='after')
     def source_contract(self):
-        validate_sources(self.files)
+        validate_sources(self.files,self.runtime_profile)
         if 'app.py' not in self.files or not any(k.startswith('tests/test_') and k.endswith('.py') for k in self.files):
             raise ValueError('app.py and unittest tests are required')
         if self.runtime_profile=='airflow-postgres-v1' and not any(k.startswith('dags/') and k.endswith('.py') for k in self.files):

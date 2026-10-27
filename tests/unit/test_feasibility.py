@@ -74,7 +74,7 @@ def test_technical_choices_do_not_block_supported_plan():
 
 def test_explicit_missing_tools_are_caught_before_model_or_business_questions(monkeypatch):
     from app import feasibility
-    story,_,_,_=inputs();story['answers']='Нужен Airflow для ежедневного задания'
+    story,_,_,_=inputs();story['answers']='Нужен Superset для отдельной BI-системы'
     monkeypatch.setattr(feasibility,'get',lambda *args:None)
     saved=[]
     monkeypatch.setattr(feasibility,'save',lambda s,r:saved.append(r))
@@ -82,5 +82,5 @@ def test_explicit_missing_tools_are_caught_before_model_or_business_questions(mo
     report=feasibility.precheck(story)
     assert report['status']=='NEEDS_PLATFORM'
     assert report['source']=='explicit_requirement_precheck'
-    assert 'airflow' in {gap['capability'] for gap in report['gaps']}
+    assert 'external_bi' in {gap['capability'] for gap in report['gaps']}
     assert len(saved)==2

@@ -167,6 +167,9 @@ def publish(story,record):
         if not readiness.get('configured') or not readiness.get('workspace_base_ready' if workspace_mode else 'product_base_ready'):
             update(record['id'],status='WAITING_GITHUB');return
         metadata,files=inspect_package(package_bytes(record))
+        allowed=readiness.get('workspace_profiles' if workspace_mode else 'product_profiles',['python-locked-v1'])
+        if metadata.get('runtime_profile','python-locked-v1') not in allowed:
+            update(record['id'],status='WAITING_GITHUB');return
         tasks=[]
         workspace_mode=(story.get('plan') or {}).get('development_mode')=='workspace'
         # Each planned task receives its own immutable contribution and PR to its epic release.
