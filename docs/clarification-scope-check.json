@@ -1,0 +1,19 @@
+{
+  "status": "passed",
+  "unit_tests": 161,
+  "integration": {
+    "status": "passed",
+    "database": "disposable PostgreSQL; no team tables read or changed",
+    "output": "..................                                                       [100%]\n18 passed in 1.35s"
+  },
+  "live_reassessment": {
+    "revision": 6,
+    "technical_feasibility": "READY",
+    "bi_blocked": false,
+    "remaining_questions": 5,
+    "approved": false,
+    "plan_unchanged": true,
+    "new_llm_calls": 0
+  },
+  "scope": "Customer clarification handling; no acceptance, implementation or data ingestion"
+}
