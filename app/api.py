@@ -77,7 +77,7 @@ def public_story(row):
     with db.connection() as conn:
         links=conn.execute('SELECT key,external_id,url FROM external_ids WHERE story_id=%s ORDER BY key',(row['id'],)).fetchall()
     main=next((x['external_id'] for x in links if x['key']=='main'),None)
-    return {k:row[k] for k in ['id','text','delivery_mode','max_calls','max_tokens','max_cost_usd','status','revision','pm','plan','plan_digest','approved','questions','trace_id','error_type','created_at','updated_at']} | {'repairs':__import__('app.rework',fromlist=['history']).history(row['id'],row['revision']) if row['delivery_mode']=='product' else None,'workspace':workspaces.public(workspaces.get(row['id'],row['revision'])) if row['delivery_mode']=='product' else None,'feasibility':row['feasibility'],'waiting_reason':waiting_reason(row),'product':public_product(get_product(row['id'],row['revision'])),'story_id':row['id'],'openproject_work_package_id':main,'links':links,'usage':db.usage(row['id']),'analytics':get_run(row['id'],row['revision']),'execution':get_execution(row['id'],row['revision'])}
+    return {k:row[k] for k in ['id','text','answers','delivery_mode','max_calls','max_tokens','max_cost_usd','status','revision','pm','plan','plan_digest','approved','questions','trace_id','error_type','created_at','updated_at']} | {'repairs':__import__('app.rework',fromlist=['history']).history(row['id'],row['revision']) if row['delivery_mode']=='product' else None,'workspace':workspaces.public(workspaces.get(row['id'],row['revision'])) if row['delivery_mode']=='product' else None,'feasibility':row['feasibility'],'waiting_reason':waiting_reason(row),'product':public_product(get_product(row['id'],row['revision'])),'story_id':row['id'],'openproject_work_package_id':main,'links':links,'usage':db.usage(row['id']),'analytics':get_run(row['id'],row['revision']),'execution':get_execution(row['id'],row['revision'])}
 
 @app.post('/stories',status_code=201)
 def create(data:StoryInput,response:Response,idempotency_key:str=Header(min_length=8,max_length=128),user=Depends(current_user)):
@@ -167,7 +167,9 @@ def resume(id:uuid.UUID,data:Resume,user=Depends(current_user)):
         technical_recheck=row['delivery_mode']=='product' and (not report or report['status']!='READY' or report['registry_digest']!=registry()['digest'])
         if row['questions'] and not data.answers.strip():raise db.Conflict('Нужны ответы на вопросы')
         if data.answers.strip() or technical_recheck:
-            conn.execute("UPDATE stories SET revision=revision+1,answers=%s,pm=NULL,plan=NULL,plan_digest=NULL,approved=false,questions='[]',status='NEW',error_type=NULL,updated_at=now() WHERE id=%s",(data.answers if data.answers.strip() else row['answers'],id))
+            from app.planning import merge_clarifications
+            answers=merge_clarifications(row['answers'],data.answers) if row['delivery_mode']=='product' else (data.answers if data.answers.strip() else row['answers'])
+            conn.execute("UPDATE stories SET revision=revision+1,answers=%s,pm=NULL,plan=NULL,plan_digest=NULL,approved=false,questions='[]',status='NEW',error_type=NULL,updated_at=now() WHERE id=%s",(answers,id))
         else:
             if row['questions']: raise db.Conflict('Нужны ответы на вопросы')
             conn.execute("UPDATE stories SET status='NEW',error_type=NULL,updated_at=now() WHERE id=%s",(id,))

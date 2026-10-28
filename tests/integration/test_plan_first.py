@@ -34,3 +34,22 @@ def test_product_plan_is_saved_and_published_even_when_platform_is_missing(monke
         with db.connection() as c:
             for table in ('events','jobs'):c.execute('DELETE FROM '+table+' WHERE story_id=%s',(sid,))
             c.execute('DELETE FROM stories WHERE id=%s',(sid,))
+
+
+def test_followup_preserves_prior_customer_scope_in_new_revision():
+    from app.api import resume
+    from app.schemas import Resume
+    from app.feasibility import scope_exclusions
+    sid=db.create_story(StoryInput(text='История сохранения уточнений для Excel-отчёта вместо BI системы',delivery_mode='product',synthetic_only=True),'scope-history-'+str(uuid.uuid4()))[0]['id']
+    try:
+        with db.connection() as c:c.execute("UPDATE stories SET status='BLOCKED',answers=%s WHERE id=%s",('замени BI-систему в результате на excel-файл с рядом данных',sid))
+        response=resume(sid,Resume(answers='Сегменты: физические и юридические лица'),'fixture-customer')
+        saved=db.get_story(sid)
+        assert saved['revision']==2 and not saved['approved'] and saved['plan'] is None
+        assert 'excel-файл' in saved['answers'] and 'юридические лица' in saved['answers']
+        assert response['answers']==saved['answers']
+        assert scope_exclusions(saved['answers'])=={'external_bi'}
+    finally:
+        with db.connection() as c:
+            for table in ('events','jobs'):c.execute('DELETE FROM '+table+' WHERE story_id=%s',(sid,))
+            c.execute('DELETE FROM stories WHERE id=%s',(sid,))

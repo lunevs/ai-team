@@ -11,4 +11,4 @@ def task_states(story):
     for _ in tasks:
         for task in tasks:
             if task['key'] not in blocked and set(task.get('depends_on',[]))&(blocked|waiting):waiting.add(task['key'])
-    return {t['key']:('Сейчас команда не может выполнить' if t['key'] in blocked else 'Ждёт решения по зависимым задачам' if t['key'] in waiting else 'Предлагается к выполнению' if feasibility.get('status')=='READY' else 'Предлагается; выполнимость всего плана пока не подтверждена') for t in tasks}
+    return {t['key']:('Сейчас команда не может выполнить' if t['key'] in blocked else 'Ждёт решения по зависимым задачам' if t['key'] in waiting else '') for t in tasks}

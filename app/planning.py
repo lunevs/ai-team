@@ -17,3 +17,13 @@ def prepare_product_plan(plan):
         role=Role.APPLICATION_DEVELOPER,kind='package',acceptance_criteria=['Полный пакет проходит независимые проверки и устанавливается по install.md'],
         depends_on=[t.key for t in tasks]).model_dump(mode='json'))
     return SAResult.model_validate(raw)
+
+
+def merge_clarifications(previous,incoming):
+    """Customer follow-ups add context; later instructions take precedence."""
+    previous=(previous or '').strip();incoming=incoming.strip()
+    if not incoming:return previous
+    if not previous or incoming==previous or incoming.startswith(previous+'\n'):return incoming
+    marker='\n\nСледующее уточнение заказчика:\n'
+    if previous.endswith(marker+incoming):return previous
+    return previous+marker+incoming

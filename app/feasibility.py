@@ -50,7 +50,8 @@ def scope_exclusions(answers):
         for match in re.finditer(pattern,answers,re.I):
             before=answers[max(0,match.start()-45):match.start()]
             after=answers[match.end():]
-            if re.search(r'(?:без|вместо|отказываюсь от)\s*(?:отдельн\w*\s*)?$',before,re.I) or re.match(r'[^.;\n]{0,25}(?:не нужна|не нужен|не требуется|не нужны)',after,re.I):result.add(key)
+            if re.search(r'(?:без|вместо|отказываюсь от|замени(?:ть|те)?|заменяем|заменил[аи]?|убери(?:те)?|убрать|исключи(?:ть|те)?|отмени(?:ть|те)?)\s*(?:отдельн\w*\s*)?$',before,re.I) or re.match(r'[^.;\n]{0,25}(?:не нужна|не нужен|не требуется|не нужны)',after,re.I):result.add(key)
+            elif re.search(r'(?:верни(?:те)?|вернуть|используй(?:те)?|снова нужна?|теперь нужна?)\s*(?:отдельн\w*\s*)?$',before,re.I) or re.match(r'\w*\s+(?:снова\s+)?нужн[аыо]?(?:[\s,.!?]|$)',after,re.I):result.discard(key)
     return result
 
 

@@ -88,7 +88,7 @@ def interaction_panel(id):
             st.markdown(f"### Этап {index}. {epic['title']}")
             for task in epic['tasks']:
                 st.write('**'+task['title']+'** — '+ROLES.get(task['role'],task['role']))
-                st.caption(states[task['key']])
+                if states[task['key']]:st.caption(states[task['key']])
                 if task.get('depends_on'):st.caption('После: '+', '.join(titles.get(k,k) for k in task['depends_on']))
         feasibility=story.get('feasibility') or {}
         for gap in feasibility.get('gaps',[]):
